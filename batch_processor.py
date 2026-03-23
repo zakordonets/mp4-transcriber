@@ -52,7 +52,10 @@ class BatchProcessor:
         self,
         folder_path: str,
         output_formats: Optional[List[str]] = None,
-        recursive: bool = False
+        recursive: bool = False,
+        diarize: bool = False,
+        diarization_backend: str = "pyannote",
+        diarization_permissive: bool = True,
     ) -> Dict:
         """
         Process all video files in a folder.
@@ -82,13 +85,19 @@ class BatchProcessor:
         
         return self.process_files(
             video_files,
-            output_formats=output_formats
+            output_formats=output_formats,
+            diarize=diarize,
+            diarization_backend=diarization_backend,
+            diarization_permissive=diarization_permissive,
         )
     
     def process_files(
         self,
         file_list: List[str],
-        output_formats: Optional[List[str]] = None
+        output_formats: Optional[List[str]] = None,
+        diarize: bool = False,
+        diarization_backend: str = "pyannote",
+        diarization_permissive: bool = True,
     ) -> Dict:
         """
         Process a list of video files.
@@ -149,7 +158,10 @@ class BatchProcessor:
                 result = self.transcriber.transcribe(
                     file_path,
                     output_formats=output_formats,
-                    save_outputs=True
+                    save_outputs=True,
+                    diarize=diarize,
+                    diarization_backend=diarization_backend,
+                    diarization_permissive=diarization_permissive,
                 )
                 
                 self.successful += 1

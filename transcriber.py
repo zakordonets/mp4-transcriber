@@ -76,7 +76,10 @@ class VideoTranscriber:
         self,
         video_path: str,
         output_formats: Optional[List[str]] = None,
-        save_outputs: bool = True
+        save_outputs: bool = True,
+        diarize: bool = False,
+        diarization_backend: str = "pyannote",
+        diarization_permissive: bool = True,
     ) -> Dict:
         """
         Transcribe a video file.
@@ -91,7 +94,7 @@ class VideoTranscriber:
                 - text: Full transcription text
                 - segments: List of segments with timestamps
                 - language: Detected language
-                - audio_path: Path to extracted audio (temporary)
+                - speaker_segments / speakers: when diarize=True and successful
         """
         # Validate input file
         if not validate_file(video_path):
@@ -122,6 +125,35 @@ class VideoTranscriber:
             # Add source file info to result
             result['source_file'] = video_path
             result['model_used'] = self.model_name
+
+            if diarize:
+                from diarization.assignment import (
+                    assign_speakers_to_segments,
+                    unique_speakers_ordered,
+                )
+                from diarization.factory import create_diarizer
+
+                try:
+                    diarizer = create_diarizer(diarization_backend)
+                    dres = diarizer.diarize(audio_path)
+                    raw_segments = result.get('segments') or []
+                    labeled = assign_speakers_to_segments(
+                        list(raw_segments),
+                        dres.speaker_segments,
+                    )
+                    result['segments'] = labeled
+                    result['speaker_segments'] = dres.speaker_segments
+                    result['speakers'] = unique_speakers_ordered(dres.speaker_segments)
+                    result['text'] = self._join_segment_texts(labeled)
+                except Exception as e:
+                    msg = str(e)
+                    if not diarization_permissive:
+                        logger.error(f"Diarization failed: {msg}")
+                        raise
+                    logger.warning(
+                        f"Diarization failed (transcript kept without speakers): {msg}"
+                    )
+                    result['diarization_warning'] = msg
             
             # Export to requested formats
             if save_outputs and output_formats:
@@ -192,6 +224,31 @@ class VideoTranscriber:
         except Exception as e:
             logger.error(f"Audio extraction failed: {e}")
             raise
+
+    @staticmethod
+    def _join_segment_texts(segments: List[Dict]) -> str:
+        parts: List[str] = []
+        for seg in segments:
+            t = (seg.get('text') or '').strip()
+            if t:
+                parts.append(t)
+        return ' '.join(parts).strip()
+
+    @staticmethod
+    def _format_segment_line(segment: Dict) -> str:
+        text = (segment.get('text') or '').strip()
+        spk = segment.get('speaker')
+        if spk:
+            return f'[{spk}] {text}'
+        return text
+
+    @staticmethod
+    def _format_subtitle_text(segment: Dict) -> str:
+        text = (segment.get('text') or '').strip()
+        spk = segment.get('speaker')
+        if spk:
+            return f'{spk}: {text}'
+        return text
     
     def export_txt(self, result: Dict, output_path: str) -> None:
         """
@@ -201,7 +258,14 @@ class VideoTranscriber:
             result: Transcription result from Whisper
             output_path: Path to save TXT file
         """
-        text = result.get('text', '').strip()
+        segments = result.get('segments') or []
+        if segments and any('speaker' in s for s in segments):
+            text = '\n'.join(
+                self._format_segment_line(s) for s in segments
+                if (s.get('text') or '').strip()
+            ).strip()
+        else:
+            text = result.get('text', '').strip()
         
         ensure_dir(os.path.dirname(output_path))
         
@@ -226,8 +290,6 @@ class VideoTranscriber:
             for i, segment in enumerate(segments, start=1):
                 start = segment.get('start', 0)
                 end = segment.get('end', 0)
-                text = segment.get('text', '').strip()
-                
                 # SRT format:
                 # Sequence number
                 # Start time --> End time
@@ -236,7 +298,7 @@ class VideoTranscriber:
                 
                 f.write(f"{i}\n")
                 f.write(f"{format_time_srt(start)} --> {format_time_srt(end)}\n")
-                f.write(f"{text}\n")
+                f.write(f"{self._format_subtitle_text(segment)}\n")
                 f.write("\n")
         
         logger.debug(f"SRT exported: {output_path}")
@@ -260,15 +322,13 @@ class VideoTranscriber:
             for segment in segments:
                 start = segment.get('start', 0)
                 end = segment.get('end', 0)
-                text = segment.get('text', '').strip()
-                
                 # VTT format:
                 # Start time --> End time
                 # Text
                 # Blank line
                 
                 f.write(f"{format_time_vtt(start)} --> {format_time_vtt(end)}\n")
-                f.write(f"{text}\n")
+                f.write(f"{self._format_subtitle_text(segment)}\n")
                 f.write("\n")
         
         logger.debug(f"VTT exported: {output_path}")

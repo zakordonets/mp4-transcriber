@@ -352,7 +352,17 @@ For Russian, `medium` model provides excellent results.
 
 ### Can I transcribe videos with multiple speakers?
 
-Yes, but Whisper doesn't differentiate between speakers (no speaker diarization). All speech will be transcribed as continuous text. Speaker diarization is planned for future versions.
+Yes. Speaker diarization is available via the optional `pyannote` backend.
+
+Quick smoke test:
+```powershell
+python main.py diarization-smoke --backend pyannote
+```
+
+If you only want to verify the CLI path without loading the model, use:
+```powershell
+python main.py diarization-smoke --backend noop
+```
 
 ### How long does transcription take?
 

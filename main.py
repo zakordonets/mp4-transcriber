@@ -3,8 +3,11 @@ Command-line interface for MP4 Transcriber.
 Provides commands for single file transcription, batch processing, and system checks.
 """
 
+import os
 import sys
 import platform
+import wave
+import warnings
 from pathlib import Path
 
 import click
@@ -17,6 +20,34 @@ from transcriber import VideoTranscriber
 from batch_processor import BatchProcessor
 from utils.logger import setup_logger
 from utils.file_handler import validate_file, get_video_files
+
+
+warnings.filterwarnings(
+    "ignore",
+    message=r".*AudioMetaData has been deprecated.*",
+    category=UserWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*torchaudio\._backend\..*has been deprecated.*",
+    category=UserWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*In 2\.9, this function's implementation will be changed to use torchaudio\.load_with_torchcodec.*",
+    category=UserWarning,
+)
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 
 logger = setup_logger("CLI")
@@ -66,7 +97,36 @@ def cli():
     show_default=True,
     help='Comma-separated list of output formats (txt,srt,vtt,json)'
 )
-def transcribe(input_file: str, model: str, language: str, output_dir: str, output_formats: str):
+@click.option(
+    '--diarize',
+    is_flag=True,
+    default=False,
+    help='Run speaker diarization (optional dependencies)',
+)
+@click.option(
+    '--diarization-backend',
+    'diarization_backend',
+    type=click.Choice(['noop', 'pyannote'], case_sensitive=False),
+    default=None,
+    help='Diarization backend (default: env DIARIZATION_BACKEND or pyannote)',
+)
+@click.option(
+    '--diarize-strict',
+    'diarize_strict',
+    is_flag=True,
+    default=False,
+    help='Abort if diarization fails (default: keep transcript without speakers)',
+)
+def transcribe(
+    input_file: str,
+    model: str,
+    language: str,
+    output_dir: str,
+    output_formats: str,
+    diarize: bool,
+    diarization_backend: str,
+    diarize_strict: bool,
+):
     """
     Transcribe a single video file.
     
@@ -90,6 +150,23 @@ def transcribe(input_file: str, model: str, language: str, output_dir: str, outp
         model_name = model or config.whisper_model
         lang = language or config.language
         out_dir = output_dir or config.output_dir
+        backend = (diarization_backend or config.diarization_backend or 'pyannote').lower()
+
+        if diarize:
+            from diarization.factory import is_backend_available
+
+            ok, hint = is_backend_available(backend)
+            if not ok:
+                click.echo(
+                    click.style(
+                        f"Ошибка: диаризация недоступна для backend «{backend}». {hint}",
+                        fg='red',
+                    )
+                )
+                click.echo(
+                    "Установите optional-зависимости или выполните команду без --diarize."
+                )
+                sys.exit(1)
         
         click.echo(click.style(f"\n🎬 MP4 Transcriber", bold=True))
         click.echo(f"Input file:  {Path(input_file).resolve()}")
@@ -97,6 +174,8 @@ def transcribe(input_file: str, model: str, language: str, output_dir: str, outp
         click.echo(f"Language:    {lang}")
         click.echo(f"Output dir:  {out_dir}")
         click.echo(f"Formats:     {', '.join(formats)}")
+        if diarize:
+            click.echo(f"Diarize:     yes (backend={backend})")
         click.echo("-" * 60)
         
         # Initialize transcriber
@@ -111,7 +190,10 @@ def transcribe(input_file: str, model: str, language: str, output_dir: str, outp
         result = transcriber.transcribe(
             input_file,
             output_formats=formats,
-            save_outputs=True
+            save_outputs=True,
+            diarize=diarize,
+            diarization_backend=backend,
+            diarization_permissive=not diarize_strict,
         )
         
         # Display results
@@ -119,6 +201,13 @@ def transcribe(input_file: str, model: str, language: str, output_dir: str, outp
         click.echo(f"Detected language: {result.get('language', 'unknown')}")
         click.echo(f"Segments: {len(result.get('segments', []))}")
         click.echo(f"Text length: {len(result.get('text', ''))} characters")
+        if result.get('diarization_warning'):
+            click.echo(
+                click.style(
+                    f"Предупреждение (диаризация): {result['diarization_warning']}",
+                    fg='yellow',
+                )
+            )
         
         if result.get('segments'):
             click.echo("\nPreview (first segment):")
@@ -179,7 +268,37 @@ def transcribe(input_file: str, model: str, language: str, output_dir: str, outp
     show_default=True,
     help='Comma-separated list of output formats'
 )
-def batch(input_folder: str, output_dir: str, model: str, language: str, workers: int, output_formats: str):
+@click.option(
+    '--diarize',
+    is_flag=True,
+    default=False,
+    help='Run speaker diarization (optional dependencies)',
+)
+@click.option(
+    '--diarization-backend',
+    'diarization_backend',
+    type=click.Choice(['noop', 'pyannote'], case_sensitive=False),
+    default=None,
+    help='Diarization backend (default: env DIARIZATION_BACKEND or pyannote)',
+)
+@click.option(
+    '--diarize-strict',
+    'diarize_strict',
+    is_flag=True,
+    default=False,
+    help='Abort a file if diarization fails (default: keep transcript without speakers)',
+)
+def batch(
+    input_folder: str,
+    output_dir: str,
+    model: str,
+    language: str,
+    workers: int,
+    output_formats: str,
+    diarize: bool,
+    diarization_backend: str,
+    diarize_strict: bool,
+):
     """
     Batch process all video files in a folder.
     
@@ -203,6 +322,23 @@ def batch(input_folder: str, output_dir: str, model: str, language: str, workers
         model_name = model or config.whisper_model
         lang = language or config.language
         out_dir = output_dir or config.output_dir
+        backend = (diarization_backend or config.diarization_backend or 'pyannote').lower()
+
+        if diarize:
+            from diarization.factory import is_backend_available
+
+            ok, hint = is_backend_available(backend)
+            if not ok:
+                click.echo(
+                    click.style(
+                        f"Ошибка: диаризация недоступна для backend «{backend}». {hint}",
+                        fg='red',
+                    )
+                )
+                click.echo(
+                    "Установите optional-зависимости или выполните команду без --diarize."
+                )
+                sys.exit(1)
         
         click.echo(click.style(f"\n📦 Batch Processing Mode", bold=True))
         click.echo(f"Input folder:  {Path(input_folder).resolve()}")
@@ -211,6 +347,8 @@ def batch(input_folder: str, output_dir: str, model: str, language: str, workers
         click.echo(f"Output dir:    {out_dir}")
         click.echo(f"Workers:       {workers} (sequential)")
         click.echo(f"Formats:       {', '.join(formats)}")
+        if diarize:
+            click.echo(f"Diarize:       yes (backend={backend})")
         click.echo("-" * 60)
         
         # Check if folder has video files
@@ -238,7 +376,10 @@ def batch(input_folder: str, output_dir: str, model: str, language: str, workers
         # Process folder
         results = batch_processor.process_folder(
             input_folder,
-            output_formats=formats
+            output_formats=formats,
+            diarize=diarize,
+            diarization_backend=backend,
+            diarization_permissive=not diarize_strict,
         )
         
         # Display summary
@@ -345,8 +486,32 @@ def check():
         click.echo(f"  Device:         {config.device}")
         click.echo(f"  Output Dir:     {config.output_dir}")
         click.echo(f"  Log Level:      {config.log_level}")
+        click.echo(f"  Diarization:    default backend = {config.diarization_backend}")
     except Exception as e:
         click.echo(click.style(f"  Error loading config: {e}", fg='red'))
+
+    click.echo("\nDiarization (optional):")
+    try:
+        from diarization.factory import describe_backend_availability
+
+        for name, ok, hint in describe_backend_availability():
+            if ok:
+                click.echo(click.style(f"  ✓ backend {name:<12} доступен", fg='green'))
+            else:
+                msg = f"недоступен ({hint})" if hint else "недоступен"
+                click.echo(click.style(f"  ✗ backend {name:<12} {msg}", fg='yellow'))
+        hf = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+        if hf:
+            click.echo("  HF token:       задан (pyannote)")
+        else:
+            click.echo(
+                click.style(
+                    "  HF token:       не задан (нужен для pyannote на huggingface.co)",
+                    fg='yellow',
+                )
+            )
+    except Exception as e:
+        click.echo(click.style(f"  Ошибка проверки diarization: {e}", fg='red'))
     
     # Final status
     click.echo("\n" + "=" * 60)
@@ -381,6 +546,69 @@ def models():
     click.echo("  • For CPU-only mode, processing will be slower")
     click.echo("  • Recommended: 'base' for quick tests, 'medium' for production")
     click.echo()
+
+
+@cli.command()
+@click.option(
+    "--backend",
+    "backend",
+    type=click.Choice(["noop", "pyannote"], case_sensitive=False),
+    default="pyannote",
+    show_default=True,
+    help="Diarization backend to smoke-test",
+)
+@click.option(
+    "--hf-token",
+    "hf_token",
+    default=None,
+    help="Hugging Face token for pyannote",
+)
+@click.option(
+    "--seconds",
+    "seconds",
+    type=float,
+    default=1.0,
+    show_default=True,
+    help="Duration of generated silent WAV used for the smoke test",
+)
+def diarization_smoke(backend: str, hf_token: str, seconds: float):
+    """Quick diarization smoke test using a tiny generated WAV file."""
+    try:
+        from diarization.factory import create_diarizer, is_backend_available
+
+        ok, hint = is_backend_available(backend)
+        if not ok:
+            click.echo(click.style(f"Error: backend '{backend}' is unavailable: {hint}", fg="red"))
+            sys.exit(1)
+
+        sample_rate = 16000
+        frame_count = max(1, int(sample_rate * seconds))
+        wav_path = Path.cwd() / f".diarization-smoke-{os.getpid()}.wav"
+        try:
+            with wave.open(str(wav_path), "wb") as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(sample_rate)
+                wav_file.writeframes(b"\x00\x00" * frame_count)
+
+            diarizer = create_diarizer(backend, hf_token=hf_token)
+            result = diarizer.diarize(str(wav_path))
+        finally:
+            try:
+                wav_path.unlink(missing_ok=True)
+            except TypeError:
+                if wav_path.exists():
+                    wav_path.unlink()
+
+        click.echo(click.style("Diarization smoke test passed", fg="green", bold=True))
+        click.echo(f"Backend:   {backend}")
+        click.echo(f"Segments:  {len(result.speaker_segments)}")
+    except KeyboardInterrupt:
+        click.echo(click.style("\nSmoke test cancelled by user", fg="yellow"))
+        sys.exit(130)
+    except Exception as e:
+        click.echo(click.style(f"Smoke test failed: {e}", fg="red"))
+        sys.exit(1)
 
 
 def main():

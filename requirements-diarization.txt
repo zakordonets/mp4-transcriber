@@ -1,0 +1,13 @@
+# Optional: speaker diarization (install only if you use --diarize)
+#   pip install -r requirements-diarization.txt
+#
+# Hugging Face: accept model terms and set HF_TOKEN for pyannote models.
+#
+# ВАЖНО: pyannote.audio 3.x несовместим с torchaudio 2.9 (удалён torchaudio.AudioMetaData).
+# См. https://github.com/pyannote/pyannote-audio/issues/1952
+# Нужна связка torch/torchaudio одной минорной линии, например torch 2.8 + torchaudio 2.8:
+#   pip install -r requirements-diarization.txt --index-url https://download.pytorch.org/whl/cpu
+# (или соответствующий index-url для CUDA)
+#
+torchaudio>=2.2.0,<2.9
+pyannote.audio>=3.1.0,<4.0.0

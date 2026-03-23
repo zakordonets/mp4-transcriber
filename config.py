@@ -29,6 +29,7 @@ DEFAULT_DEVICE = "cpu"
 DEFAULT_OUTPUT_DIR = "./transcripts"
 DEFAULT_WORKERS = 2
 DEFAULT_LOG_LEVEL = "INFO"
+DEFAULT_DIARIZATION_BACKEND = "pyannote"
 
 
 class Config:
@@ -46,6 +47,9 @@ class Config:
         self.output_dir = os.getenv('OUTPUT_DIR', DEFAULT_OUTPUT_DIR)
         self.max_workers = int(os.getenv('MAX_WORKERS', str(DEFAULT_WORKERS)))
         self.log_level = os.getenv('LOG_LEVEL', DEFAULT_LOG_LEVEL)
+        self.diarization_backend = os.getenv(
+            'DIARIZATION_BACKEND', DEFAULT_DIARIZATION_BACKEND
+        )
         
         # Validate configuration
         self._validate()
