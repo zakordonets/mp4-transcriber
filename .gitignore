@@ -32,6 +32,11 @@ videos/
 transcripts/
 *.tmp
 temp_audio/
+.venv/
+_tmp_pkg/
+.pytest_cache/
+.tmp_test_workspace/
+.deepeval/
 
 # IDE
 .vscode/
