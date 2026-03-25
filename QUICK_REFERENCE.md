@@ -138,6 +138,7 @@ mp4-transcriber/
 
 - Full documentation: [README.md](README.md)
 - Setup guide: [SETUP_GUIDE.md](SETUP_GUIDE.md)
+- Archived docs: [docs/archive](docs/archive/)
 - Run tests: `python tests/test_transcriber.py`
 
 ---

@@ -553,6 +553,7 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
 
 - **Issues**: Open an issue on GitHub
 - **Documentation**: Check the full docs in the repository
+- **Archived docs**: See [docs/archive](docs/archive/)
 
 ---
 
