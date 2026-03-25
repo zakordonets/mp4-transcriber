@@ -33,6 +33,12 @@ Use this checklist to ensure your MP4 Transcriber is properly set up.
 - [ ] Wait for installation to complete (may take 5-10 minutes)
 - [ ] No error messages during installation
 
+### Optional: Speaker Diarization Dependencies
+
+- [ ] Install only if you plan to use speaker labeling
+- [ ] Run: `pip install -r requirements-diarization.txt`
+- [ ] Set a Hugging Face token in `.env` if required by your backend
+
 ### Verify Python Packages
 
 Check each package individually:
@@ -51,6 +57,7 @@ Check each package individually:
 - [ ] Set `WHISPER_MODEL=base` (recommended for start)
 - [ ] Set `LANGUAGE=ru` or your preferred language
 - [ ] Verify `OUTPUT_DIR=./transcripts`
+- [ ] Optional: set `DIARIZATION_BACKEND=pyannote`
 
 ## Step 4: System Verification
 
@@ -58,6 +65,7 @@ Check each package individually:
 - [ ] All dependencies show as installed
 - [ ] FFmpeg path is displayed
 - [ ] Configuration values are correct
+- [ ] Optional diarization backends are listed if installed
 - [ ] No error messages
 
 ## Step 5: First Test
@@ -73,6 +81,10 @@ Check each package individually:
 - [ ] Run: `python main.py models`
 - [ ] View available Whisper models table
 - [ ] Confirm CLI is working correctly
+
+### Option C: Diarization Smoke Test
+- [ ] Run: `python main.py diarization-smoke --backend noop`
+- [ ] Confirm the smoke test passes without optional packages
 
 ## Troubleshooting
 
@@ -103,6 +115,7 @@ After successful setup:
 
 - [ ] Read [README.md](README.md) for full documentation
 - [ ] Review [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for common commands
+- [ ] Review diarization notes if you need speaker labels
 - [ ] Explore different Whisper models
 - [ ] Try batch processing with multiple videos
 - [ ] Experiment with different output formats
@@ -127,6 +140,9 @@ python main.py check
 
 # View models
 python main.py models
+
+# Optional diarization smoke test
+python main.py diarization-smoke --backend noop
 
 # Transcribe single file
 python main.py transcribe --input video.mp4 --model base --lang ru

@@ -1,5 +1,7 @@
 # ТЗ на добавление диаризации
 
+> Archived implementation spec. The feature described here is already implemented; use `README.md` for current commands and behavior.
+
 ## Контекст
 Проект MP4 Transcriber уже поддерживает транскрибацию видео через Whisper и ffmpeg, работает в CPU-only режиме, имеет CLI-команды для одиночной и пакетной обработки и умеет экспортировать TXT, SRT, VTT и JSON.
 

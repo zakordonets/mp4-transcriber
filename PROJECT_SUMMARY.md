@@ -5,6 +5,8 @@
 **Implementation Date:** March 20, 2026  
 **Status:** ✅ COMPLETE - Ready for Use
 
+> Historical implementation summary. For current usage and supported commands, see `README.md`.
+
 ---
 
 ## ✅ Implementation Complete
@@ -15,7 +17,7 @@ All 9 phases of the technical specification have been successfully implemented a
 
 - **Total Files Created:** 18
 - **Lines of Code:** ~2,500+
-- **Documentation Pages:** 4 comprehensive guides
+- **Documentation Pages:** 4 user guides + 1 archived spec
 - **Test Coverage:** Unit tests for all utility functions
 - **Compliance:** 100% with Technical Specification
 
@@ -32,6 +34,7 @@ mp4-transcriber/
 ├── requirements.txt           # Python dependencies
 ├── .env.example              # Environment configuration template
 ├── .gitignore                # Git ignore rules
+├── requirements-diarization.txt  # Optional diarization dependencies
 │
 ├── utils/
 │   ├── __init__.py           # Package exports
@@ -39,9 +42,18 @@ mp4-transcriber/
 │   ├── file_handler.py       # File utilities (105 lines)
 │   └── time_formatter.py     # Time formatting (96 lines)
 │
+├── diarization/              # Optional speaker diarization layer
+│   ├── base.py
+│   ├── backends.py
+│   ├── assignment.py
+│   ├── factory.py
+│   └── hf_hub_compat.py
+│
 ├── tests/
 │   ├── __init__.py           # Test package
-│   └── test_transcriber.py   # Unit tests (268 lines)
+│   ├── test_transcriber.py   # Unit tests (268 lines)
+│   ├── test_diarization.py   # Diarization helpers
+│   └── test_cli_main.py      # CLI smoke tests
 │
 ├── videos/                   # Input folder (gitignored)
 ├── transcripts/              # Output folder (gitignored)
@@ -65,6 +77,7 @@ mp4-transcriber/
 - [x] Whisper model selection (tiny, base, small, medium, large)
 - [x] Language selection (optimized for Russian)
 - [x] CPU-only inference (no GPU required)
+- [x] Optional speaker diarization with lazy imports
 
 ### User Interface ✅
 - [x] CLI with Click library
@@ -72,6 +85,7 @@ mp4-transcriber/
 - [x] Comprehensive help system
 - [x] System dependency checker
 - [x] Model comparison viewer
+- [x] Diarization smoke-test command
 
 ### Error Handling ✅
 - [x] Skip-on-error strategy for batch jobs
@@ -100,6 +114,7 @@ mp4-transcriber/
 - [x] Quick reference card
 - [x] Installation checklist
 - [x] Inline code documentation
+- [x] Archived diarization specification
 
 ---
 
@@ -133,6 +148,7 @@ mp4-transcriber/
 | Progress bar | ✅ | Console-based with tqdm |
 | Logging | ✅ | Console + file logging |
 | Error handling | ✅ | Skip-on-error strategy |
+| Speaker diarization | ✅ | Optional backend, not required for base install |
 
 ---
 
@@ -202,6 +218,7 @@ from utils import (
 
 ### Documentation Quality
 - ✅ 4 comprehensive guides
+- ✅ 1 archived specification
 - ✅ Code examples for all features
 - ✅ Troubleshooting sections
 - ✅ Quick reference cards
@@ -249,11 +266,10 @@ python main.py batch --input ./videos --output ./transcripts --model base
 ### Current Limitations
 1. **CPU-only**: No GPU support in this version (by design)
 2. **Sequential processing**: Batch jobs process one file at a time
-3. **No speaker diarization**: Cannot distinguish between speakers
-4. **Requires FFmpeg**: Must be installed separately
+3. **Requires FFmpeg**: Must be installed separately
+4. **Diarization is optional**: Speaker labels depend on the backend and optional packages
 
 ### Future Enhancements (Not Implemented)
-- Speaker diarization
 - GPU acceleration option
 - Parallel batch processing
 - Summary generation

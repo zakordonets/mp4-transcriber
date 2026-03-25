@@ -48,6 +48,19 @@ This installs:
 
 **Note:** First-time installation may take several minutes as PyTorch and Whisper are large packages.
 
+### Optional: Speaker Diarization Support
+
+Install these packages only if you plan to use `--diarize` with the `pyannote` backend:
+
+```bash
+pip install -r requirements-diarization.txt
+```
+
+Notes:
+- Keep the base installation unchanged if you do not need speaker labeling.
+- `python main.py check` will show whether the optional backend is available.
+- For `pyannote`, set a Hugging Face token in your environment if the model requires it.
+
 ### Step 3: Configure Environment
 
 ```bash
@@ -58,6 +71,8 @@ cp .env.example .env
 # - WHISPER_MODEL=base (recommended starting point)
 # - LANGUAGE=ru (for Russian) or en (for English)
 # - OUTPUT_DIR=./transcripts
+# - DIARIZATION_BACKEND=pyannote (optional)
+# - HF_TOKEN=... or HUGGING_FACE_HUB_TOKEN=... (only for pyannote)
 ```
 
 ### Step 4: Verify Installation
@@ -67,6 +82,12 @@ cp .env.example .env
 python main.py check
 
 # If all checks pass, you're ready to go!
+```
+
+If you installed optional diarization dependencies, also run:
+
+```bash
+python main.py diarization-smoke --backend noop
 ```
 
 ### Step 5: Test Transcription

@@ -12,9 +12,19 @@ python main.py check
 python main.py transcribe --input video.mp4 --model base --lang ru
 ```
 
+### Single File with Speaker Labels
+```bash
+python main.py transcribe --input video.mp4 --diarize --diarization-backend pyannote
+```
+
 ### Batch Processing
 ```bash
 python main.py batch --input ./videos --output ./transcripts --model medium
+```
+
+### Batch Processing with No-op Backend
+```bash
+python main.py batch --input ./videos --diarize --diarization-backend noop
 ```
 
 ### View Available Models
@@ -33,6 +43,7 @@ DEVICE=cpu              # cpu only (in this version)
 OUTPUT_DIR=./transcripts
 MAX_WORKERS=2
 LOG_LEVEL=INFO
+DIARIZATION_BACKEND=pyannote   # noop, pyannote
 ```
 
 ---
@@ -45,6 +56,8 @@ LOG_LEVEL=INFO
 - **json** - Full metadata with timestamps
 
 Default: All formats are generated
+
+When diarization is enabled, TXT/SRT/VTT output includes speaker labels and JSON includes `speaker_segments` and `speakers`.
 
 ---
 
@@ -67,6 +80,7 @@ Default: All formats are generated
 3. **Russian language**: Works best with `medium` model
 4. **Batch jobs**: Can be interrupted and resumed
 5. **File organization**: Keep videos in `./videos` folder
+6. **Speaker labels**: Use `--diarize` only when optional diarization packages are installed
 
 ---
 
@@ -92,6 +106,11 @@ pip install -r requirements.txt
 **Check installation:**
 ```bash
 python main.py check
+```
+
+**Optional diarization smoke test:**
+```bash
+python main.py diarization-smoke --backend noop
 ```
 
 ---

@@ -15,6 +15,7 @@
 - [Usage](#-usage)
   - [CLI Commands](#cli-commands)
   - [Python API](#python-api)
+- [Speaker Diarization](#speaker-diarization)
 - [Whisper Models](#-whisper-models)
 - [Configuration](#-configuration)
 - [Output Formats](#-output-formats)
@@ -30,6 +31,7 @@
 - **Multiple Export Formats**: TXT, SRT (subtitles), VTT (web subtitles), JSON (full metadata)
 - **Batch Processing**: Transcribe entire folders of videos automatically
 - **Language Support**: Optimized for Russian, supports 90+ languages via Whisper
+- **Optional Speaker Diarization**: Label speakers with the `pyannote` backend when needed
 - **Progress Tracking**: Real-time progress bars during batch processing
 - **Error Handling**: Skip-on-error strategy ensures batch jobs complete
 - **Logging**: Detailed console and file logging for debugging
@@ -73,6 +75,9 @@ cd mp4-transcriber
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Optional speaker diarization support
+# pip install -r requirements-diarization.txt
 ```
 
 ### Setup Configuration
@@ -131,6 +136,9 @@ python main.py transcribe --input <video_file> [OPTIONS]
 - `--lang, -l`: Language code (default: ru)
 - `--output-dir, -o`: Output directory (default: ./transcripts)
 - `--formats, -f`: Output formats comma-separated (default: txt,srt,vtt,json)
+- `--diarize`: Enable optional speaker diarization
+- `--diarization-backend`: Backend to use for diarization (`noop` or `pyannote`)
+- `--diarize-strict`: Fail the command if diarization cannot run
 
 **Examples:**
 ```bash
@@ -142,6 +150,9 @@ python main.py transcribe --input lecture.mp4 --model small --lang en
 
 # Export only to SRT format
 python main.py transcribe --input interview.mov --formats srt
+
+# Transcribe with speaker diarization
+python main.py transcribe --input interview.mov --diarize --diarization-backend pyannote
 ```
 
 #### Batch Processing
@@ -157,6 +168,9 @@ python main.py batch --input <folder_path> [OPTIONS]
 - `--lang, -l`: Language code (default: from .env)
 - `--workers, -w`: Number of workers (default: 2, sequential processing)
 - `--formats, -f`: Output formats (default: txt,srt,vtt,json)
+- `--diarize`: Enable optional speaker diarization
+- `--diarization-backend`: Backend to use for diarization (`noop` or `pyannote`)
+- `--diarize-strict`: Fail the command if diarization cannot run
 
 **Examples:**
 ```bash
@@ -168,6 +182,9 @@ python main.py batch --input ./lectures --output ./subs --model medium
 
 # Process with specific language
 python main.py batch --input ./interviews --lang en --formats txt,json
+
+# Batch process with no-op diarization backend
+python main.py batch --input ./videos --diarize --diarization-backend noop
 ```
 
 #### System Check
@@ -215,6 +232,18 @@ result = transcriber.transcribe(
     save_outputs=True
 )
 
+# Transcribe with optional diarization
+diarized_result = transcriber.transcribe(
+    "./videos/interview.mp4",
+    output_formats=["json"],
+    save_outputs=True,
+    diarize=True,
+    diarization_backend="pyannote",
+)
+
+print(f"Speaker segments: {len(diarized_result.get('speaker_segments', []))}")
+print(f"Speakers: {diarized_result.get('speakers', [])}")
+
 print(f"Text: {result['text']}")
 print(f"Segments: {len(result['segments'])}")
 print(f"Language: {result['language']}")
@@ -226,6 +255,33 @@ results = batch.process_folder("./videos")
 print(f"Successful: {results['successful']}")
 print(f"Failed: {results['failed']}")
 ```
+
+---
+
+## 🎙 Speaker Diarization
+
+Speaker diarization is optional and does not affect the default transcription path.
+
+### Available Backends
+
+- `noop`: no-op backend for smoke testing and environments without diarization packages
+- `pyannote`: optional backend for real speaker labeling
+
+### How to Use
+
+```bash
+python main.py transcribe --input interview.mp4 --diarize
+python main.py transcribe --input interview.mp4 --diarize --diarization-backend pyannote
+python main.py batch --input ./videos --diarize
+python main.py diarization-smoke --backend noop
+```
+
+### Behavior
+
+- Without `--diarize`, the application behaves exactly as before.
+- If the backend is unavailable, the CLI exits with a clear message.
+- In permissive mode, diarization failures keep the transcript and add a warning.
+- JSON output includes `speaker_segments`, `speakers`, and speaker labels on segments when diarization succeeds.
 
 ---
 
@@ -270,6 +326,13 @@ MAX_WORKERS=2
 
 # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 LOG_LEVEL=INFO
+
+# Optional: default diarization backend when --diarize is used
+DIARIZATION_BACKEND=pyannote
+
+# Optional: Hugging Face token for pyannote
+# HF_TOKEN=hf_your_token_here
+# HUGGING_FACE_HUB_TOKEN=hf_your_token_here
 ```
 
 ### Supported Languages
@@ -352,7 +415,7 @@ For Russian, `medium` model provides excellent results.
 
 ### Can I transcribe videos with multiple speakers?
 
-Yes. Speaker diarization is available via the optional `pyannote` backend.
+Yes. Speaker diarization is available via the optional `pyannote` backend. Use `python main.py check` to see whether it is installed, or `python main.py diarization-smoke --backend noop` for a dependency-free smoke test.
 
 Quick smoke test:
 ```powershell
