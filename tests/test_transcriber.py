@@ -282,6 +282,81 @@ class TestVideoTranscriber:
         assert "source_file" not in result
         assert result["source_files"] == ["part1.mp4", "part2.mp4"]
 
+    def test_build_speaker_turns_merges_neighbor_items_for_same_speaker(self):
+        transcriber = VideoTranscriber.__new__(VideoTranscriber)
+
+        turns = transcriber._build_speaker_turns([
+            {"text": "Привет", "start": 0.0, "end": 0.4, "speaker": "SPEAKER_00"},
+            {"text": "мир.", "start": 0.5, "end": 0.9, "speaker": "SPEAKER_00"},
+        ])
+
+        assert len(turns) == 1
+        assert turns[0]["speaker"] == "SPEAKER_00"
+        assert turns[0]["text"] == "Привет мир."
+
+    def test_build_speaker_turns_splits_on_speaker_change(self):
+        transcriber = VideoTranscriber.__new__(VideoTranscriber)
+
+        turns = transcriber._build_speaker_turns([
+            {"text": "Первый блок.", "start": 0.0, "end": 1.0, "speaker": "SPEAKER_00"},
+            {"text": "Второй блок.", "start": 1.1, "end": 2.0, "speaker": "SPEAKER_01"},
+        ])
+
+        assert len(turns) == 2
+        assert turns[0]["speaker"] == "SPEAKER_00"
+        assert turns[1]["speaker"] == "SPEAKER_01"
+
+    def test_build_speaker_turns_splits_on_long_pause(self):
+        transcriber = VideoTranscriber.__new__(VideoTranscriber)
+
+        turns = transcriber._build_speaker_turns([
+            {"text": "Первая часть.", "start": 0.0, "end": 0.5, "speaker": "SPEAKER_00"},
+            {"text": "Вторая часть.", "start": 2.0, "end": 2.5, "speaker": "SPEAKER_00"},
+        ])
+
+        assert len(turns) == 2
+
+    def test_split_segment_into_phrases_uses_sentence_boundaries(self):
+        transcriber = VideoTranscriber.__new__(VideoTranscriber)
+
+        phrases = transcriber._split_segment_into_phrases({
+            "text": "Первое предложение. Второе предложение?",
+            "start": 0.0,
+            "end": 4.0,
+        })
+
+        assert len(phrases) == 2
+        assert phrases[0]["text"] == "Первое предложение."
+        assert phrases[1]["text"] == "Второе предложение?"
+
+    def test_export_txt_prefers_speaker_turns(self):
+        transcriber = VideoTranscriber.__new__(VideoTranscriber)
+        output_dir = Path("tests/.tmp_export_txt")
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True)
+        output_path = output_dir / "dialog.txt"
+
+        try:
+            transcriber.export_txt(
+                {
+                    "speaker_turns": [
+                        {"speaker": "SPEAKER_01", "text": "Здравствуйте."},
+                        {"speaker": "SPEAKER_00", "text": "Добрый день."},
+                    ],
+                    "segments": [
+                        {"speaker": "SPEAKER_01", "text": "Старый формат не должен использоваться."},
+                    ],
+                },
+                str(output_path),
+            )
+
+            exported = output_path.read_text(encoding="utf-8")
+            assert exported == "[SPEAKER_01]\nЗдравствуйте.\n\n[SPEAKER_00]\nДобрый день."
+        finally:
+            if output_dir.exists():
+                shutil.rmtree(output_dir)
+
 
 def run_tests():
     """Run all tests manually (alternative to pytest)."""

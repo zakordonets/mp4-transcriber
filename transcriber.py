@@ -4,6 +4,7 @@ Core transcription module using Whisper ASR.
 
 import os
 import json
+import re
 import tempfile
 import shutil
 import wave
@@ -203,6 +204,10 @@ class VideoTranscriber:
                     result['speaker_segments'] = dres.speaker_segments
                     result['speakers'] = unique_speakers_ordered(dres.speaker_segments)
                     result['text'] = self._join_segment_texts(labeled)
+                    result['speaker_turns'] = self._build_speaker_turns_from_result(
+                        result,
+                        dres.speaker_segments,
+                    )
                 except Exception as e:
                     msg = str(e)
                     if not diarization_permissive:
@@ -347,6 +352,152 @@ class VideoTranscriber:
         return text
 
     @staticmethod
+    def _normalize_turn_text(text: str) -> str:
+        text = re.sub(r"\s+", " ", (text or "").strip())
+        text = re.sub(r"\s+([,.;:?!])", r"\1", text)
+        return text.strip()
+
+    def _split_segment_into_phrases(self, segment: Dict) -> List[Dict]:
+        text = self._normalize_turn_text(segment.get("text", ""))
+        if not text:
+            return []
+
+        start = float(segment.get("start", 0.0) or 0.0)
+        end = float(segment.get("end", start) or start)
+        duration = max(end - start, 0.0)
+
+        parts = [part.strip() for part in re.split(r"(?<=[.!?;:])\s+", text) if part.strip()]
+        if len(parts) <= 1 or duration <= 0:
+            return [{"text": text, "start": start, "end": end}]
+
+        total_chars = sum(len(part) for part in parts) or len(parts)
+        cursor = start
+        phrases: List[Dict] = []
+        for index, part in enumerate(parts):
+            if index == len(parts) - 1:
+                part_end = end
+            else:
+                part_duration = duration * (len(part) / total_chars)
+                part_end = min(end, cursor + part_duration)
+            phrases.append({
+                "text": part,
+                "start": cursor,
+                "end": part_end,
+            })
+            cursor = part_end
+        return phrases
+
+    def _extract_alignment_items(self, result: Dict) -> List[Dict]:
+        items: List[Dict] = []
+        for segment_index, segment in enumerate(result.get("segments") or []):
+            words = segment.get("words") or []
+            if words:
+                for word in words:
+                    text = self._normalize_turn_text(word.get("word") or word.get("text") or "")
+                    if not text:
+                        continue
+                    start = float(word.get("start", segment.get("start", 0.0)) or 0.0)
+                    end = float(word.get("end", start) or start)
+                    items.append({
+                        "text": text,
+                        "start": start,
+                        "end": end,
+                        "source_segment_index": segment_index,
+                    })
+                continue
+
+            for phrase in self._split_segment_into_phrases(segment):
+                phrase["source_segment_index"] = segment_index
+                items.append(phrase)
+        return items
+
+    @staticmethod
+    def _assign_speaker_to_item(item: Dict, speaker_segments: List[Dict]) -> Dict:
+        item_start = float(item.get("start", 0.0) or 0.0)
+        item_end = float(item.get("end", item_start) or item_start)
+        midpoint = item_start + ((item_end - item_start) / 2.0)
+
+        best_speaker = None
+        best_overlap = -1.0
+        midpoint_speaker = None
+
+        for segment in speaker_segments:
+            seg_start = float(segment.get("start", 0.0) or 0.0)
+            seg_end = float(segment.get("end", seg_start) or seg_start)
+            overlap = max(0.0, min(item_end, seg_end) - max(item_start, seg_start))
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_speaker = segment.get("speaker")
+            if seg_start <= midpoint <= seg_end:
+                midpoint_speaker = segment.get("speaker")
+
+        assigned = dict(item)
+        assigned["speaker"] = best_speaker if best_overlap > 0 else midpoint_speaker
+        return assigned
+
+    def _build_speaker_turns(
+        self,
+        items: List[Dict],
+        pause_split_threshold: float = 1.0,
+    ) -> List[Dict]:
+        turns: List[Dict] = []
+
+        for item in items:
+            text = self._normalize_turn_text(item.get("text", ""))
+            if not text:
+                continue
+
+            speaker = item.get("speaker")
+            start = float(item.get("start", 0.0) or 0.0)
+            end = float(item.get("end", start) or start)
+            word_count = len(text.split())
+
+            if not turns:
+                turns.append({
+                    "speaker": speaker,
+                    "start": start,
+                    "end": end,
+                    "text": text,
+                    "word_count": word_count,
+                })
+                continue
+
+            previous = turns[-1]
+            gap = max(0.0, start - float(previous.get("end", start) or start))
+            if previous.get("speaker") == speaker and gap <= pause_split_threshold:
+                previous["text"] = self._normalize_turn_text(f"{previous['text']} {text}")
+                previous["end"] = end
+                previous["word_count"] = int(previous.get("word_count", 0)) + word_count
+            else:
+                turns.append({
+                    "speaker": speaker,
+                    "start": start,
+                    "end": end,
+                    "text": text,
+                    "word_count": word_count,
+                })
+
+        return turns
+
+    def _build_speaker_turns_from_result(
+        self,
+        result: Dict,
+        speaker_segments: List[Dict],
+        pause_split_threshold: float = 1.0,
+    ) -> List[Dict]:
+        items = self._extract_alignment_items(result)
+        if not items:
+            return []
+        aligned_items = [
+            self._assign_speaker_to_item(item, speaker_segments)
+            for item in items
+        ]
+        return self._build_speaker_turns(
+            aligned_items,
+            pause_split_threshold=pause_split_threshold,
+        )
+
+    @staticmethod
     def _format_subtitle_text(segment: Dict) -> str:
         text = (segment.get('text') or '').strip()
         spk = segment.get('speaker')
@@ -362,8 +513,21 @@ class VideoTranscriber:
             result: Transcription result from Whisper
             output_path: Path to save TXT file
         """
+        speaker_turns = result.get('speaker_turns') or []
         segments = result.get('segments') or []
-        if segments and any('speaker' in s for s in segments):
+        if speaker_turns:
+            blocks = []
+            for turn in speaker_turns:
+                text = self._normalize_turn_text(turn.get('text', ''))
+                if not text:
+                    continue
+                speaker = turn.get('speaker')
+                if speaker:
+                    blocks.append(f"[{speaker}]\n{text}")
+                else:
+                    blocks.append(text)
+            text = '\n\n'.join(blocks).strip()
+        elif segments and any('speaker' in s for s in segments):
             text = '\n'.join(
                 self._format_segment_line(s) for s in segments
                 if (s.get('text') or '').strip()
