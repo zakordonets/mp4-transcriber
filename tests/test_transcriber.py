@@ -11,13 +11,18 @@ Run tests with: pytest tests/
 """
 
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import transcriber as transcriber_module
+from transcriber import VideoTranscriber
 from utils.time_formatter import format_time_srt, format_time_vtt, parse_srt_time
 from utils.file_handler import is_video_file, validate_file, ensure_dir, get_video_files
 from config import Config, WHISPER_MODELS, VIDEO_FORMATS, OUTPUT_FORMATS
@@ -213,6 +218,69 @@ class TestConfig:
         
         assert len(formats) > 0
         assert all(fmt in OUTPUT_FORMATS for fmt in formats)
+
+
+class TestVideoTranscriber:
+    """Targeted tests for transcription-specific helpers."""
+
+    def test_normalize_output_basename_sanitizes_user_input(self):
+        transcriber = VideoTranscriber.__new__(VideoTranscriber)
+
+        base_name = transcriber._normalize_output_basename(
+            r"..\nested\bad:name",
+            ["video.mp4"],
+        )
+
+        assert base_name == "bad_name"
+
+    def test_transcribe_many_omits_source_file_for_combined_inputs(self, monkeypatch):
+        class DummyModel:
+            def transcribe(self, *_args, **_kwargs):
+                return {
+                    "text": "hello world",
+                    "segments": [{"start": 0.0, "end": 1.0, "text": "hello world"}],
+                    "language": "en",
+                }
+
+        transcriber = VideoTranscriber.__new__(VideoTranscriber)
+        transcriber.model = DummyModel()
+        transcriber.model_name = "base"
+        transcriber.language = "en"
+        transcriber.output_dir = "."
+
+        temp_root = Path("tests/.tmp_transcribe_many")
+        if temp_root.exists():
+            shutil.rmtree(temp_root)
+        temp_root.mkdir(parents=True)
+
+        monkeypatch.setattr(transcriber_module, "validate_file", lambda _path: True)
+        monkeypatch.setattr(
+            transcriber_module.tempfile,
+            "mkdtemp",
+            lambda prefix="whisper_audio_": str(temp_root),
+        )
+        monkeypatch.setattr(
+            VideoTranscriber,
+            "extract_audio",
+            lambda self, _video_path, audio_path: Path(audio_path).write_bytes(b"wav"),
+        )
+        monkeypatch.setattr(
+            VideoTranscriber,
+            "_concat_wav_files",
+            lambda self, _audio_paths, output_path: Path(output_path).write_bytes(b"merged"),
+        )
+
+        try:
+            result = transcriber.transcribe_many(
+                ["part1.mp4", "part2.mp4"],
+                save_outputs=False,
+            )
+        finally:
+            if temp_root.exists():
+                shutil.rmtree(temp_root)
+
+        assert "source_file" not in result
+        assert result["source_files"] == ["part1.mp4", "part2.mp4"]
 
 
 def run_tests():

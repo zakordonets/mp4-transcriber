@@ -131,10 +131,11 @@ python main.py transcribe --input <video_file> [OPTIONS]
 ```
 
 **Options:**
-- `--input, -i`: Path to input video file (required)
+- `--input, -i`: Path to input video file; repeat the option to merge multiple files into one transcript
 - `--model, -m`: Whisper model (tiny|base|small|medium|large)
 - `--lang, -l`: Language code (default: ru)
 - `--output-dir, -o`: Output directory (default: ./transcripts)
+- `--output-name`: Custom basename for generated transcript files when combining inputs
 - `--formats, -f`: Output formats comma-separated (default: txt,srt,vtt,json)
 - `--diarize`: Enable optional speaker diarization
 - `--diarization-backend`: Backend to use for diarization (`noop` or `pyannote`)
@@ -153,6 +154,12 @@ python main.py transcribe --input interview.mov --formats srt
 
 # Transcribe with speaker diarization
 python main.py transcribe --input interview.mov --diarize --diarization-backend pyannote
+
+# Merge two videos into one continuous transcript
+python main.py transcribe --input part1.mp4 --input part2.mp4 --output-name lecture_day1
+
+# Same scenario via the dedicated combine command
+python main.py combine-transcribe --input part1.mp4 --input part2.mp4 --output-name lecture_day1
 ```
 
 #### Batch Processing
@@ -247,6 +254,15 @@ print(f"Speakers: {diarized_result.get('speakers', [])}")
 print(f"Text: {result['text']}")
 print(f"Segments: {len(result['segments'])}")
 print(f"Language: {result['language']}")
+
+# Transcribe multiple videos as one continuous transcript
+combined_result = transcriber.transcribe_many(
+    ["./videos/part1.mp4", "./videos/part2.mp4"],
+    output_formats=["txt", "json"],
+    save_outputs=True,
+    output_basename="lecture_day1",
+)
+print(combined_result["source_files"])
 
 # Batch processing
 batch = BatchProcessor(transcriber, max_workers=2)
@@ -394,7 +410,8 @@ WEBVTT
     }
   ],
   "language": "ru",
-  "source_file": "./videos/interview.mp4"
+  "source_file": "./videos/interview.mp4",
+  "source_files": ["./videos/interview.mp4"]
 }
 ```
 

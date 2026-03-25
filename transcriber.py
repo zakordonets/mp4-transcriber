@@ -5,15 +5,17 @@ Core transcription module using Whisper ASR.
 import os
 import json
 import tempfile
+import shutil
+import wave
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 import whisper
 import ffmpeg
 
 from config import WHISPER_MODELS, OUTPUT_FORMATS
 from utils.logger import setup_logger
-from utils.file_handler import validate_file, ensure_dir
+from utils.file_handler import sanitize_filename, validate_file, ensure_dir
 from utils.time_formatter import format_time_srt, format_time_vtt
 
 
@@ -96,34 +98,90 @@ class VideoTranscriber:
                 - language: Detected language
                 - speaker_segments / speakers: when diarize=True and successful
         """
-        # Validate input file
-        if not validate_file(video_path):
-            raise FileNotFoundError(f"Video file not found or not accessible: {video_path}")
-        
-        logger.info(f"Starting transcription: {Path(video_path).name}")
-        
-        # Create temporary directory for audio extraction
+        return self.transcribe_many(
+            [video_path],
+            output_formats=output_formats,
+            save_outputs=save_outputs,
+            diarize=diarize,
+            diarization_backend=diarization_backend,
+            diarization_permissive=diarization_permissive,
+        )
+
+    def transcribe_many(
+        self,
+        video_paths: List[str],
+        output_formats: Optional[List[str]] = None,
+        save_outputs: bool = True,
+        diarize: bool = False,
+        diarization_backend: str = "pyannote",
+        diarization_permissive: bool = True,
+        output_basename: Optional[str] = None,
+    ) -> Dict:
+        """
+        Transcribe one or more video files as a single continuous transcript.
+
+        The videos are converted to mono 16 kHz WAV files, concatenated in the
+        provided order, and sent to Whisper once so timestamps remain continuous.
+
+        Args:
+            video_paths: List of video file paths in the order they should be read
+            output_formats: List of formats to export (txt, srt, vtt, json)
+            save_outputs: Whether to save output files automatically
+            diarize: Whether to run speaker diarization on the combined audio
+            diarization_backend: Backend name for diarization
+            diarization_permissive: Keep transcript even if diarization fails
+            output_basename: Optional custom output filename stem
+
+        Returns:
+            Dictionary with Whisper output plus source metadata.
+        """
+        if not video_paths:
+            raise ValueError("At least one video file must be provided")
+
+        for video_path in video_paths:
+            if not validate_file(video_path):
+                raise FileNotFoundError(
+                    f"Video file not found or not accessible: {video_path}"
+                )
+
+        if len(video_paths) == 1:
+            logger.info(f"Starting transcription: {Path(video_paths[0]).name}")
+        else:
+            names = ", ".join(Path(p).name for p in video_paths)
+            logger.info(f"Starting combined transcription: {names}")
+
         temp_dir = tempfile.mkdtemp(prefix="whisper_audio_")
-        audio_path = os.path.join(temp_dir, "audio.wav")
-        
+        merged_audio_path = os.path.join(temp_dir, "merged_audio.wav")
+        extracted_audio_paths: List[str] = []
+
         try:
-            # Extract audio from video
-            logger.debug(f"Extracting audio to: {audio_path}")
-            self.extract_audio(video_path, audio_path)
-            
-            # Transcribe audio with Whisper
+            for index, video_path in enumerate(video_paths, start=1):
+                audio_path = os.path.join(temp_dir, f"audio_{index}.wav")
+                logger.debug(f"Extracting audio to: {audio_path}")
+                self.extract_audio(video_path, audio_path)
+                extracted_audio_paths.append(audio_path)
+
+            if len(extracted_audio_paths) == 1:
+                merged_audio_path = extracted_audio_paths[0]
+            else:
+                logger.debug(f"Concatenating {len(extracted_audio_paths)} audio tracks")
+                self._concat_wav_files(extracted_audio_paths, merged_audio_path)
+
             logger.info("Running Whisper inference...")
             result = self.model.transcribe(
-                audio_path,
+                merged_audio_path,
                 language=self.language if self.language else None,
                 task="transcribe",
                 verbose=False
             )
-            
+
             logger.info(f"Transcription complete. Detected language: {result.get('language', 'unknown')}")
-            
-            # Add source file info to result
-            result['source_file'] = video_path
+
+            if len(video_paths) == 1:
+                result['source_file'] = video_paths[0]
+            else:
+                result.pop('source_file', None)
+            result['source_files'] = list(video_paths)
             result['model_used'] = self.model_name
 
             if diarize:
@@ -135,7 +193,7 @@ class VideoTranscriber:
 
                 try:
                     diarizer = create_diarizer(diarization_backend)
-                    dres = diarizer.diarize(audio_path)
+                    dres = diarizer.diarize(merged_audio_path)
                     raw_segments = result.get('segments') or []
                     labeled = assign_speakers_to_segments(
                         list(raw_segments),
@@ -154,10 +212,9 @@ class VideoTranscriber:
                         f"Diarization failed (transcript kept without speakers): {msg}"
                     )
                     result['diarization_warning'] = msg
-            
-            # Export to requested formats
+
             if save_outputs and output_formats:
-                base_name = Path(video_path).stem
+                base_name = self._normalize_output_basename(output_basename, video_paths)
                 for fmt in output_formats:
                     try:
                         output_path = os.path.join(self.output_dir, f"{base_name}.{fmt}")
@@ -166,9 +223,9 @@ class VideoTranscriber:
                     except Exception as e:
                         logger.error(f"Failed to export {fmt}: {e}")
                         raise
-            
+
             return result
-            
+
         except KeyboardInterrupt:
             logger.warning("Transcription interrupted by user")
             raise
@@ -176,19 +233,66 @@ class VideoTranscriber:
             logger.error(f"Transcription failed: {e}")
             raise
         finally:
-            # Cleanup temporary audio file
-            if os.path.exists(audio_path):
+            if os.path.exists(temp_dir):
                 try:
-                    os.remove(audio_path)
-                    logger.debug(f"Cleaned up temporary audio file: {audio_path}")
+                    shutil.rmtree(temp_dir)
+                    logger.debug(f"Cleaned up temporary directory: {temp_dir}")
                 except Exception as e:
-                    logger.warning(f"Failed to clean up audio file: {e}")
-            
-            # Try to remove temp directory
-            try:
-                os.rmdir(temp_dir)
-            except OSError:
-                pass  # Directory not empty or other issue
+                    logger.warning(f"Failed to clean up temporary files: {e}")
+
+    def _build_output_basename(self, video_paths: List[str]) -> str:
+        stems = [sanitize_filename(Path(path).stem) for path in video_paths]
+        joined = "__".join(filter(None, stems))
+        return joined or "transcript"
+
+    def _normalize_output_basename(
+        self,
+        output_basename: Optional[str],
+        video_paths: List[str],
+    ) -> str:
+        if output_basename:
+            sanitized = sanitize_filename(Path(output_basename).name).strip()
+            if sanitized:
+                return sanitized
+        return self._build_output_basename(video_paths)
+
+    def _concat_wav_files(self, audio_paths: List[str], output_path: str) -> None:
+        if not audio_paths:
+            raise ValueError("No audio files provided for concatenation")
+
+        ensure_dir(os.path.dirname(output_path))
+
+        with wave.open(audio_paths[0], "rb") as first_wav:
+            params = (
+                first_wav.getnchannels(),
+                first_wav.getsampwidth(),
+                first_wav.getframerate(),
+                first_wav.getcomptype(),
+                first_wav.getcompname(),
+            )
+            with wave.open(output_path, "wb") as out_wav:
+                out_wav.setnchannels(params[0])
+                out_wav.setsampwidth(params[1])
+                out_wav.setframerate(params[2])
+                out_wav.setcomptype(params[3], params[4])
+                out_wav.writeframes(first_wav.readframes(first_wav.getnframes()))
+
+                for audio_path in audio_paths[1:]:
+                    with wave.open(audio_path, "rb") as wav_file:
+                        current = (
+                            wav_file.getnchannels(),
+                            wav_file.getsampwidth(),
+                            wav_file.getframerate(),
+                            wav_file.getcomptype(),
+                            wav_file.getcompname(),
+                        )
+                        if current != params:
+                            raise RuntimeError(
+                                "Audio files must share the same format before concatenation"
+                            )
+                        out_wav.writeframes(wav_file.readframes(wav_file.getnframes()))
+
+        logger.debug(f"Audio concatenated successfully: {Path(output_path).name}")
     
     def extract_audio(self, video_path: str, audio_path: str) -> None:
         """

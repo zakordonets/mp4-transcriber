@@ -14,12 +14,12 @@ import click
 
 from config import (
     WHISPER_MODELS, OUTPUT_FORMATS, VIDEO_FORMATS,
-    get_config, reload_config
+    get_config
 )
 from transcriber import VideoTranscriber
 from batch_processor import BatchProcessor
 from utils.logger import setup_logger
-from utils.file_handler import validate_file, get_video_files
+from utils.file_handler import get_video_files
 
 
 warnings.filterwarnings(
@@ -53,72 +53,78 @@ if hasattr(sys.stderr, "reconfigure"):
 logger = setup_logger("CLI")
 
 
-@click.group()
-@click.version_option(version="1.0.0", prog_name="MP4 Transcriber")
-def cli():
-    """
-    MP4 Transcriber - Convert video files to text using Whisper ASR.
-    
-    Supports batch processing, multiple export formats, and Russian language.
-    """
-    pass
+def _add_transcription_options(command):
+    """Apply shared options for transcription commands."""
+    options = [
+        click.option(
+            '--diarize-strict',
+            'diarize_strict',
+            is_flag=True,
+            default=False,
+            help='Abort if diarization fails (default: keep transcript without speakers)',
+        ),
+        click.option(
+            '--diarization-backend',
+            'diarization_backend',
+            type=click.Choice(['noop', 'pyannote'], case_sensitive=False),
+            default=None,
+            help='Diarization backend (default: env DIARIZATION_BACKEND or pyannote)',
+        ),
+        click.option(
+            '--diarize',
+            is_flag=True,
+            default=False,
+            help='Run speaker diarization (optional dependencies)',
+        ),
+        click.option(
+            '--formats', '-f',
+            'output_formats',
+            default='txt,srt,vtt,json',
+            show_default=True,
+            help='Comma-separated list of output formats (txt,srt,vtt,json)'
+        ),
+        click.option(
+            '--output-dir', '-o',
+            type=click.Path(),
+            default=None,
+            help='Output directory for transcripts (default from .env)'
+        ),
+        click.option(
+            '--lang', '-l',
+            'language',
+            default=None,
+            help='Language code for transcription (default from .env or "ru")'
+        ),
+        click.option(
+            '--model', '-m',
+            type=click.Choice(WHISPER_MODELS, case_sensitive=False),
+            default=None,
+            help=f'Whisper model to use (default from .env or {WHISPER_MODELS[1]})'
+        ),
+        click.option(
+            '--output-name',
+            'output_name',
+            default=None,
+            help='Custom basename for generated transcript files when combining inputs'
+        ),
+        click.option(
+            '--input', '-i',
+            'input_files',
+            required=True,
+            multiple=True,
+            type=click.Path(exists=True),
+            help='Path to one or more input video files (repeat --input for each file)'
+        ),
+    ]
+
+    for option in reversed(options):
+        command = option(command)
+    return command
 
 
-@cli.command()
-@click.option(
-    '--input', '-i',
-    'input_file',
-    required=True,
-    type=click.Path(exists=True),
-    help='Path to input video file'
-)
-@click.option(
-    '--model', '-m',
-    type=click.Choice(WHISPER_MODELS, case_sensitive=False),
-    default=None,
-    help=f'Whisper model to use (default from .env or {WHISPER_MODELS[1]})'
-)
-@click.option(
-    '--lang', '-l',
-    'language',
-    default=None,
-    help='Language code for transcription (default from .env or "ru")'
-)
-@click.option(
-    '--output-dir', '-o',
-    type=click.Path(),
-    default=None,
-    help='Output directory for transcripts (default from .env)'
-)
-@click.option(
-    '--formats', '-f',
-    'output_formats',
-    default='txt,srt,vtt,json',
-    show_default=True,
-    help='Comma-separated list of output formats (txt,srt,vtt,json)'
-)
-@click.option(
-    '--diarize',
-    is_flag=True,
-    default=False,
-    help='Run speaker diarization (optional dependencies)',
-)
-@click.option(
-    '--diarization-backend',
-    'diarization_backend',
-    type=click.Choice(['noop', 'pyannote'], case_sensitive=False),
-    default=None,
-    help='Diarization backend (default: env DIARIZATION_BACKEND or pyannote)',
-)
-@click.option(
-    '--diarize-strict',
-    'diarize_strict',
-    is_flag=True,
-    default=False,
-    help='Abort if diarization fails (default: keep transcript without speakers)',
-)
-def transcribe(
-    input_file: str,
+def _run_transcription(
+    input_files: tuple,
+    output_name: str,
     model: str,
     language: str,
     output_dir: str,
@@ -126,27 +132,31 @@ def transcribe(
     diarize: bool,
     diarization_backend: str,
     diarize_strict: bool,
-):
-    """
-    Transcribe a single video file.
-    
-    Example:
-        python main.py transcribe --input video.mp4 --model medium --lang ru
-    """
-    # Parse output formats
+    title: str,
+    require_multiple_inputs: bool = False,
+) -> None:
+    """Shared transcription flow for single and combined file commands."""
+    if not input_files:
+        click.echo(click.style("Error: at least one input file is required", fg='red'))
+        sys.exit(1)
+
+    if require_multiple_inputs and len(input_files) < 2:
+        click.echo(
+            click.style(
+                "Error: combine-transcribe requires at least two input files",
+                fg='red',
+            )
+        )
+        sys.exit(1)
+
     formats = [f.strip().lower() for f in output_formats.split(',')]
-    
-    # Validate formats
     for fmt in formats:
         if fmt not in OUTPUT_FORMATS:
             click.echo(click.style(f"Error: Invalid format '{fmt}'. Must be one of {OUTPUT_FORMATS}", fg='red'))
             sys.exit(1)
-    
+
     try:
-        # Load configuration
         config = get_config()
-        
-        # Override with command-line options
         model_name = model or config.whisper_model
         lang = language or config.language
         out_dir = output_dir or config.output_dir
@@ -159,17 +169,20 @@ def transcribe(
             if not ok:
                 click.echo(
                     click.style(
-                        f"Ошибка: диаризация недоступна для backend «{backend}». {hint}",
+                        f"Error: diarization is unavailable for backend '{backend}'. {hint}",
                         fg='red',
                     )
                 )
-                click.echo(
-                    "Установите optional-зависимости или выполните команду без --diarize."
-                )
+                click.echo("Install the optional dependencies or run without --diarize.")
                 sys.exit(1)
-        
-        click.echo(click.style(f"\n🎬 MP4 Transcriber", bold=True))
-        click.echo(f"Input file:  {Path(input_file).resolve()}")
+
+        click.echo(click.style(f"\n{title}", bold=True))
+        if len(input_files) == 1:
+            click.echo(f"Input file:  {Path(input_files[0]).resolve()}")
+        else:
+            click.echo("Input files:")
+            for path in input_files:
+                click.echo(f"  - {Path(path).resolve()}")
         click.echo(f"Model:       {model_name}")
         click.echo(f"Language:    {lang}")
         click.echo(f"Output dir:  {out_dir}")
@@ -177,44 +190,40 @@ def transcribe(
         if diarize:
             click.echo(f"Diarize:     yes (backend={backend})")
         click.echo("-" * 60)
-        
-        # Initialize transcriber
+
         transcriber = VideoTranscriber(
             model_name=model_name,
             language=lang,
             device='cpu',
             output_dir=out_dir
         )
-        
-        # Transcribe file
-        result = transcriber.transcribe(
-            input_file,
+
+        result = transcriber.transcribe_many(
+            list(input_files),
             output_formats=formats,
             save_outputs=True,
             diarize=diarize,
             diarization_backend=backend,
             diarization_permissive=not diarize_strict,
+            output_basename=output_name,
         )
-        
-        # Display results
+
         click.echo("\n" + click.style("✓ Transcription Complete!", fg='green', bold=True))
         click.echo(f"Detected language: {result.get('language', 'unknown')}")
         click.echo(f"Segments: {len(result.get('segments', []))}")
         click.echo(f"Text length: {len(result.get('text', ''))} characters")
         if result.get('diarization_warning'):
-            click.echo(
-                click.style(
-                    f"Предупреждение (диаризация): {result['diarization_warning']}",
-                    fg='yellow',
-                )
-            )
-        
+            click.echo(click.style(f"Diarization warning: {result['diarization_warning']}", fg='yellow'))
+
+        if result.get('source_files'):
+            click.echo(f"Source files: {len(result['source_files'])}")
+
         if result.get('segments'):
             click.echo("\nPreview (first segment):")
             click.echo(f"  {result['segments'][0]['text']}")
-        
+
         click.echo()
-        
+
     except FileNotFoundError as e:
         click.echo(click.style(f"Error: {e}", fg='red'))
         sys.exit(1)
@@ -225,6 +234,84 @@ def transcribe(
         click.echo(click.style(f"Error: {e}", fg='red'))
         logger.exception("Transcription failed")
         sys.exit(1)
+
+
+@click.group()
+@click.version_option(version="1.0.0", prog_name="MP4 Transcriber")
+def cli():
+    """
+    MP4 Transcriber - Convert video files to text using Whisper ASR.
+    
+    Supports batch processing, multiple export formats, and Russian language.
+    """
+    pass
+
+
+@cli.command()
+@_add_transcription_options
+def transcribe(
+    input_files: tuple,
+    output_name: str,
+    model: str,
+    language: str,
+    output_dir: str,
+    output_formats: str,
+    diarize: bool,
+    diarization_backend: str,
+    diarize_strict: bool,
+):
+    """
+    Transcribe one or more video files as a single continuous transcript.
+    
+    Example:
+        python main.py transcribe --input video.mp4 --model medium --lang ru
+    """
+    _run_transcription(
+        input_files=input_files,
+        output_name=output_name,
+        model=model,
+        language=language,
+        output_dir=output_dir,
+        output_formats=output_formats,
+        diarize=diarize,
+        diarization_backend=diarization_backend,
+        diarize_strict=diarize_strict,
+        title="MP4 Transcriber",
+    )
+
+
+@cli.command(name="combine-transcribe")
+@_add_transcription_options
+def combine_transcribe(
+    input_files: tuple,
+    output_name: str,
+    model: str,
+    language: str,
+    output_dir: str,
+    output_formats: str,
+    diarize: bool,
+    diarization_backend: str,
+    diarize_strict: bool,
+):
+    """
+    Combine two or more video files into a single continuous transcript.
+
+    Example:
+        python main.py combine-transcribe --input part1.mp4 --input part2.mp4
+    """
+    _run_transcription(
+        input_files=input_files,
+        output_name=output_name,
+        model=model,
+        language=language,
+        output_dir=output_dir,
+        output_formats=output_formats,
+        diarize=diarize,
+        diarization_backend=diarization_backend,
+        diarize_strict=diarize_strict,
+        title="Combine Transcribe",
+        require_multiple_inputs=True,
+    )
 
 
 @cli.command()

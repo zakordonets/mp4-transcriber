@@ -21,6 +21,14 @@ def test_transcribe_help_includes_diarize():
     assert "--diarization-backend" in result.output
 
 
+def test_combine_transcribe_help_includes_required_inputs():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["combine-transcribe", "--help"])
+    assert result.exit_code == 0
+    assert "--input" in result.output
+    assert "--output-name" in result.output
+
+
 def test_batch_help_includes_diarize():
     runner = CliRunner()
     result = runner.invoke(cli, ["batch", "--help"])
