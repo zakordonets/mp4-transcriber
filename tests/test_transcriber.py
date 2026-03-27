@@ -1,5 +1,5 @@
 """
-Unit tests for MP4 Transcriber.
+Unit tests for Media Transcriber.
 
 Note: These tests focus on utility functions and configuration.
 Full integration tests with Whisper model are not included due to:
@@ -24,8 +24,23 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import transcriber as transcriber_module
 from transcriber import VideoTranscriber
 from utils.time_formatter import format_time_srt, format_time_vtt, parse_srt_time
-from utils.file_handler import is_video_file, validate_file, ensure_dir, get_video_files
-from config import Config, WHISPER_MODELS, VIDEO_FORMATS, OUTPUT_FORMATS
+from utils.file_handler import (
+    ensure_dir,
+    get_media_files,
+    get_video_files,
+    is_audio_file,
+    is_media_file,
+    is_video_file,
+    validate_file,
+)
+from config import (
+    AUDIO_FORMATS,
+    Config,
+    MEDIA_FORMATS,
+    OUTPUT_FORMATS,
+    VIDEO_FORMATS,
+    WHISPER_MODELS,
+)
 
 
 class TestTimeFormatter:
@@ -89,7 +104,7 @@ class TestFileHandler:
     """Tests for file handling utilities."""
     
     def test_is_video_file_valid(self):
-        """Test valid video file extensions."""
+        """Test valid supported video file extensions."""
         assert is_video_file("video.mp4") is True
         assert is_video_file("video.MOV") is True
         assert is_video_file("video.avi") is True
@@ -97,14 +112,30 @@ class TestFileHandler:
         assert is_video_file("video.webm") is True
     
     def test_is_video_file_invalid(self):
-        """Test invalid video file extensions."""
+        """Test invalid supported video file extensions."""
         assert is_video_file("video.txt") is False
         assert is_video_file("video.mp3") is False
         assert is_video_file("video.jpg") is False
         assert is_video_file("video") is False
+
+    def test_is_audio_file_valid(self):
+        """Test valid audio file extensions."""
+        assert is_audio_file("call.mp3") is True
+        assert is_audio_file("memo.WAV") is True
+        assert is_audio_file("meeting.m4a") is True
+        assert is_audio_file("clip.aac") is True
+        assert is_audio_file("voice.ogg") is True
+        assert is_audio_file("voice.opus") is True
+
+    def test_is_media_file_supports_video_and_audio(self):
+        """Test media file detection across supported input types."""
+        assert is_media_file("video.mp4") is True
+        assert is_media_file("recording.m4a") is True
+        assert is_media_file("call.opus") is True
+        assert is_media_file("notes.txt") is False
     
     def test_is_video_file_with_path(self):
-        """Test video file detection with full paths."""
+        """Test video extension detection with full paths."""
         assert is_video_file("/path/to/video.mp4") is True
         assert is_video_file("C:\\Videos\\movie.mkv") is True
         assert is_video_file("./subtitles/file.srt") is False
@@ -135,7 +166,7 @@ class TestFileHandler:
             assert os.path.exists(tmpdir)
     
     def test_get_video_files(self):
-        """Test getting video files from folder."""
+        """Test getting supported video files from folder."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create test files
             video_files = ["test1.mp4", "test2.mov", "test3.avi"]
@@ -153,15 +184,36 @@ class TestFileHandler:
             assert all(is_video_file(f) for f in result)
     
     def test_get_video_files_empty_folder(self):
-        """Test getting video files from empty folder."""
+        """Test getting supported video files from empty folder."""
         with tempfile.TemporaryDirectory() as tmpdir:
             result = get_video_files(tmpdir)
             assert len(result) == 0
     
     def test_get_video_files_nonexistent(self):
-        """Test getting video files from non-existent folder."""
+        """Test getting supported video files from non-existent folder."""
         result = get_video_files("/nonexistent/path")
         assert len(result) == 0
+
+    def test_get_media_files_returns_supported_audio_and_video(self):
+        """Test media discovery across mixed folders."""
+        tmpdir = Path("tests/.tmp_media_inputs")
+        if tmpdir.exists():
+            shutil.rmtree(tmpdir)
+        tmpdir.mkdir(parents=True)
+
+        try:
+            for filename in ["sample.mp4", "call.m4a", "voice.opus", "notes.txt"]:
+                (tmpdir / filename).write_text("x", encoding="utf-8")
+
+            result = get_media_files(str(tmpdir))
+
+            assert str(tmpdir / "sample.mp4") in result
+            assert str(tmpdir / "call.m4a") in result
+            assert str(tmpdir / "voice.opus") in result
+            assert str(tmpdir / "notes.txt") not in result
+        finally:
+            if tmpdir.exists():
+                shutil.rmtree(tmpdir)
 
 
 class TestConfig:
@@ -203,10 +255,14 @@ class TestConfig:
         """Test that configuration constants are defined."""
         assert len(WHISPER_MODELS) > 0
         assert len(VIDEO_FORMATS) > 0
+        assert len(AUDIO_FORMATS) > 0
+        assert len(MEDIA_FORMATS) > 0
         assert len(OUTPUT_FORMATS) > 0
         
         assert "base" in WHISPER_MODELS
         assert ".mp4" in VIDEO_FORMATS
+        assert ".wav" in AUDIO_FORMATS
+        assert ".m4a" in MEDIA_FORMATS
         assert "txt" in OUTPUT_FORMATS
         assert "srt" in OUTPUT_FORMATS
         assert "json" in OUTPUT_FORMATS
@@ -232,6 +288,19 @@ class TestVideoTranscriber:
         )
 
         assert base_name == "bad_name"
+
+    def test_build_output_basename_caps_long_combined_names(self):
+        transcriber = VideoTranscriber.__new__(VideoTranscriber)
+
+        video_paths = [
+            f"very_long_descriptive_segment_name_number_{index:02d}.mp4"
+            for index in range(1, 8)
+        ]
+
+        base_name = transcriber._build_output_basename(video_paths)
+
+        assert len(base_name) <= 120
+        assert "__".join(Path(path).stem for path in video_paths) != base_name
 
     def test_transcribe_many_omits_source_file_for_combined_inputs(self, monkeypatch):
         class DummyModel:
@@ -281,6 +350,86 @@ class TestVideoTranscriber:
 
         assert "source_file" not in result
         assert result["source_files"] == ["part1.mp4", "part2.mp4"]
+
+    def test_concat_wav_files_streams_in_chunks(self, monkeypatch):
+        transcriber = VideoTranscriber.__new__(VideoTranscriber)
+        audio_paths = ["a.wav", "b.wav"]
+        output_path = "out.wav"
+        read_sizes = []
+
+        class FakeReadWave:
+            def __init__(self, chunks):
+                self._chunks = list(chunks)
+
+            def getnchannels(self):
+                return 1
+
+            def getsampwidth(self):
+                return 2
+
+            def getframerate(self):
+                return 16000
+
+            def getcomptype(self):
+                return "NONE"
+
+            def getcompname(self):
+                return "not compressed"
+
+            def readframes(self, frame_count):
+                read_sizes.append(frame_count)
+                if self._chunks:
+                    return self._chunks.pop(0)
+                return b""
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class FakeWriteWave:
+            def __init__(self):
+                self.writes = []
+
+            def setnchannels(self, _value):
+                pass
+
+            def setsampwidth(self, _value):
+                pass
+
+            def setframerate(self, _value):
+                pass
+
+            def setcomptype(self, _ctype, _cname):
+                pass
+
+            def writeframes(self, data):
+                self.writes.append(data)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        writers = []
+
+        def fake_wave_open(path, mode):
+            if mode == "rb":
+                return FakeReadWave([b"chunk1", b"chunk2", b""])
+            writer = FakeWriteWave()
+            writers.append(writer)
+            return writer
+
+        monkeypatch.setattr(transcriber_module, "ensure_dir", lambda _path: None)
+        monkeypatch.setattr(transcriber_module.wave, "open", fake_wave_open)
+
+        transcriber._concat_wav_files(audio_paths, output_path)
+
+        assert read_sizes
+        assert all(size == 16_000 * 30 for size in read_sizes)
+        assert writers[0].writes == [b"chunk1", b"chunk2", b"chunk1", b"chunk2"]
 
     def test_build_speaker_turns_merges_neighbor_items_for_same_speaker(self):
         transcriber = VideoTranscriber.__new__(VideoTranscriber)
@@ -373,7 +522,7 @@ def run_tests():
     failed_tests = []
     
     print("\n" + "=" * 60)
-    print("Running MP4 Transcriber Tests")
+    print("Running Media Transcriber Tests")
     print("=" * 60)
     
     for test_class in test_classes:

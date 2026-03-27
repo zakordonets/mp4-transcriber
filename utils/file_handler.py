@@ -1,5 +1,5 @@
 """
-File handling utilities for MP4 Transcriber.
+File handling utilities for Media Transcriber.
 """
 
 import os
@@ -7,8 +7,10 @@ from pathlib import Path
 from typing import List, Optional
 
 
-# Supported video formats
+# Supported media formats
 VIDEO_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
+AUDIO_EXTENSIONS = {'.mp3', '.wav', '.m4a', '.aac', '.ogg', '.opus'}
+MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 
 
 def is_video_file(filename: str) -> bool:
@@ -22,6 +24,32 @@ def is_video_file(filename: str) -> bool:
         True if file has a video extension, False otherwise
     """
     return Path(filename).suffix.lower() in VIDEO_EXTENSIONS
+
+
+def is_audio_file(filename: str) -> bool:
+    """
+    Check if a file has a supported audio extension.
+
+    Args:
+        filename: Name or path of the file
+
+    Returns:
+        True if file has a supported audio extension, False otherwise
+    """
+    return Path(filename).suffix.lower() in AUDIO_EXTENSIONS
+
+
+def is_media_file(filename: str) -> bool:
+    """
+    Check if a file has a supported media extension.
+
+    Args:
+        filename: Name or path of the file
+
+    Returns:
+        True if file has a supported video or audio extension, False otherwise
+    """
+    return Path(filename).suffix.lower() in MEDIA_EXTENSIONS
 
 
 def validate_file(file_path: str) -> bool:
@@ -48,28 +76,55 @@ def ensure_dir(dir_path: str) -> None:
     Path(dir_path).mkdir(parents=True, exist_ok=True)
 
 
-def get_video_files(folder_path: str) -> List[str]:
+def _get_files_by_extensions(folder_path: str, extensions: set[str]) -> List[str]:
     """
-    Get all video files from a folder.
+    Get all files matching the provided extensions from a folder.
     
     Args:
         folder_path: Path to the folder
+        extensions: Allowed file extensions
         
     Returns:
-        List of absolute paths to video files
+        List of matching file paths
     """
     folder = Path(folder_path)
     if not folder.exists() or not folder.is_dir():
         return []
     
-    video_files = []
-    for ext in VIDEO_EXTENSIONS:
+    files = []
+    for ext in extensions:
         # Case-insensitive search
-        video_files.extend([str(f) for f in folder.glob(f'*{ext}')])
-        video_files.extend([str(f) for f in folder.glob(f'*{ext.upper()}')])
+        files.extend([str(f) for f in folder.glob(f'*{ext}')])
+        files.extend([str(f) for f in folder.glob(f'*{ext.upper()}')])
     
     # Remove duplicates and sort
-    return sorted(list(set(video_files)))
+    return sorted(list(set(files)))
+
+
+def get_video_files(folder_path: str) -> List[str]:
+    """
+    Get all supported video files from a folder.
+
+    Args:
+        folder_path: Path to the folder
+
+    Returns:
+        List of absolute paths to video files
+    """
+    return _get_files_by_extensions(folder_path, VIDEO_EXTENSIONS)
+
+
+def get_media_files(folder_path: str) -> List[str]:
+    """
+    Get all supported media files from a folder.
+
+    Args:
+        folder_path: Path to the folder
+
+    Returns:
+        List of absolute paths to video and audio files
+    """
+    return _get_files_by_extensions(folder_path, MEDIA_EXTENSIONS)
 
 
 def get_file_size_mb(file_path: str) -> float:

@@ -1,4 +1,4 @@
-# MP4 Transcriber - Quick Reference
+# Media Transcriber - Quick Reference
 
 ## 🚀 Common Commands
 
@@ -9,22 +9,22 @@ python main.py check
 
 ### Single File Transcription
 ```bash
-python main.py transcribe --input video.mp4 --model base --lang ru
+python main.py transcribe --input recording.m4a --model base --lang ru
 ```
 
 ### Single File with Speaker Labels
 ```bash
-python main.py transcribe --input video.mp4 --diarize --diarization-backend pyannote
+python main.py transcribe --input interview.mp4 --diarize --diarization-backend pyannote
 ```
 
 ### Batch Processing
 ```bash
-python main.py batch --input ./videos --output ./transcripts --model medium
+python main.py batch --input ./media --output ./transcripts --model medium
 ```
 
 ### Batch Processing with No-op Backend
 ```bash
-python main.py batch --input ./videos --diarize --diarization-backend noop
+python main.py batch --input ./media --diarize --diarization-backend noop
 ```
 
 ### View Available Models
@@ -51,7 +51,7 @@ DIARIZATION_BACKEND=pyannote   # noop, pyannote
 ## 📦 Output Formats
 
 - **txt** - Plain text transcript
-- **srt** - Subtitle format for video players
+- **srt** - Subtitle format for media players
 - **vtt** - Web subtitle format
 - **json** - Full metadata with timestamps
 
@@ -79,7 +79,7 @@ When diarization is enabled, TXT/SRT/VTT output includes speaker labels and JSON
 2. **Better accuracy**: Use `medium` or `large`
 3. **Russian language**: Works best with `medium` model
 4. **Batch jobs**: Can be interrupted and resumed
-5. **File organization**: Keep videos in `./videos` folder
+5. **File organization**: Keep source media in a dedicated `./media` folder
 6. **Speaker labels**: Use `--diarize` only when optional diarization packages are installed
 
 ---
@@ -118,7 +118,7 @@ python main.py diarization-smoke --backend noop
 ## 📁 Project Structure
 
 ```
-mp4-transcriber/
+media-transcriber/
 ├── main.py              # CLI entry point
 ├── transcriber.py       # Core transcription
 ├── batch_processor.py   # Batch processing
@@ -128,7 +128,7 @@ mp4-transcriber/
 │   ├── file_handler.py
 │   └── time_formatter.py
 ├── tests/               # Unit tests
-├── videos/              # Input files
+├── media/               # Input files
 └── transcripts/         # Output files
 ```
 

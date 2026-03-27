@@ -1,5 +1,5 @@
 """
-Command-line interface for MP4 Transcriber.
+Command-line interface for Media Transcriber.
 Provides commands for single file transcription, batch processing, and system checks.
 """
 
@@ -13,13 +13,13 @@ from pathlib import Path
 import click
 
 from config import (
-    WHISPER_MODELS, OUTPUT_FORMATS, VIDEO_FORMATS,
+    WHISPER_MODELS, OUTPUT_FORMATS,
     get_config
 )
 from transcriber import VideoTranscriber
 from batch_processor import BatchProcessor
 from utils.logger import setup_logger
-from utils.file_handler import get_video_files
+from utils.file_handler import get_media_files
 
 
 warnings.filterwarnings(
@@ -113,7 +113,7 @@ def _add_transcription_options(command):
             required=True,
             multiple=True,
             type=click.Path(exists=True),
-            help='Path to one or more input video files (repeat --input for each file)'
+            help='Path to one or more input media files (repeat --input for each file)'
         ),
     ]
 
@@ -237,10 +237,10 @@ def _run_transcription(
 
 
 @click.group()
-@click.version_option(version="1.0.0", prog_name="MP4 Transcriber")
+@click.version_option(version="1.0.0", prog_name="Media Transcriber")
 def cli():
     """
-    MP4 Transcriber - Convert video files to text using Whisper ASR.
+    Media Transcriber - Convert media files to text using Whisper ASR.
     
     Supports batch processing, multiple export formats, and Russian language.
     """
@@ -261,10 +261,10 @@ def transcribe(
     diarize_strict: bool,
 ):
     """
-    Transcribe one or more video files as a single continuous transcript.
+    Transcribe one or more media files as a single continuous transcript.
     
     Example:
-        python main.py transcribe --input video.mp4 --model medium --lang ru
+        python main.py transcribe --input recording.m4a --model medium --lang ru
     """
     _run_transcription(
         input_files=input_files,
@@ -276,7 +276,7 @@ def transcribe(
         diarize=diarize,
         diarization_backend=diarization_backend,
         diarize_strict=diarize_strict,
-        title="MP4 Transcriber",
+        title="Media Transcriber",
     )
 
 
@@ -294,10 +294,10 @@ def combine_transcribe(
     diarize_strict: bool,
 ):
     """
-    Combine two or more video files into a single continuous transcript.
+    Combine two or more media files into a single continuous transcript.
 
     Example:
-        python main.py combine-transcribe --input part1.mp4 --input part2.mp4
+        python main.py combine-transcribe --input part1.mp4 --input part2.m4a
     """
     _run_transcription(
         input_files=input_files,
@@ -320,7 +320,7 @@ def combine_transcribe(
     'input_folder',
     required=True,
     type=click.Path(exists=True),
-    help='Path to folder containing video files'
+    help='Path to folder containing supported media files'
 )
 @click.option(
     '--output', '-o',
@@ -387,10 +387,10 @@ def batch(
     diarize_strict: bool,
 ):
     """
-    Batch process all video files in a folder.
+    Batch process all supported media files in a folder.
     
     Example:
-        python main.py batch --input ./videos --output ./transcripts --workers 2
+        python main.py batch --input ./media --output ./transcripts --workers 2
     """
     # Parse output formats
     formats = [f.strip().lower() for f in output_formats.split(',')]
@@ -438,13 +438,13 @@ def batch(
             click.echo(f"Diarize:       yes (backend={backend})")
         click.echo("-" * 60)
         
-        # Check if folder has video files
-        video_files = get_video_files(input_folder)
-        if not video_files:
-            click.echo(click.style(f"No video files found in {input_folder}", fg='yellow'))
+        # Check if folder has supported media files
+        media_files = get_media_files(input_folder)
+        if not media_files:
+            click.echo(click.style(f"No supported media files found in {input_folder}", fg='yellow'))
             sys.exit(0)
         
-        click.echo(f"Found {len(video_files)} video files\n")
+        click.echo(f"Found {len(media_files)} media files\n")
         
         # Initialize transcriber
         transcriber = VideoTranscriber(

@@ -1,5 +1,5 @@
 """
-Batch processing module for handling multiple video files.
+Batch processing module for handling multiple media files.
 """
 
 import os
@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from transcriber import VideoTranscriber
 from utils.logger import setup_logger
-from utils.file_handler import get_video_files, validate_file
+from utils.file_handler import get_media_files, validate_file
 
 
 logger = setup_logger("BatchProcessor")
@@ -18,7 +18,7 @@ logger = setup_logger("BatchProcessor")
 
 class BatchProcessor:
     """
-    Batch processor for transcribing multiple video files.
+    Batch processor for transcribing multiple media files.
     
     Processes files sequentially with progress tracking and error handling.
     When a file fails, it skips to the next one (skip-on-error strategy).
@@ -58,21 +58,21 @@ class BatchProcessor:
         diarization_permissive: bool = True,
     ) -> Dict:
         """
-        Process all video files in a folder.
+        Process all supported media files in a folder.
         
         Args:
-            folder_path: Path to folder containing video files
+            folder_path: Path to folder containing media files
             output_formats: List of formats to export
             recursive: Whether to search subdirectories
             
         Returns:
             Dictionary with processing statistics
         """
-        # Get all video files from folder
-        video_files = get_video_files(folder_path)
+        # Get all supported media files from folder
+        media_files = get_media_files(folder_path)
         
-        if not video_files:
-            logger.warning(f"No video files found in: {folder_path}")
+        if not media_files:
+            logger.warning(f"No supported media files found in: {folder_path}")
             return {
                 'total': 0,
                 'successful': 0,
@@ -81,10 +81,10 @@ class BatchProcessor:
                 'files': []
             }
         
-        logger.info(f"Found {len(video_files)} video files in {folder_path}")
+        logger.info(f"Found {len(media_files)} media files in {folder_path}")
         
         return self.process_files(
-            video_files,
+            media_files,
             output_formats=output_formats,
             diarize=diarize,
             diarization_backend=diarization_backend,
@@ -100,10 +100,10 @@ class BatchProcessor:
         diarization_permissive: bool = True,
     ) -> Dict:
         """
-        Process a list of video files.
+        Process a list of media files.
         
         Args:
-            file_list: List of video file paths
+            file_list: List of media file paths
             output_formats: List of formats to export
             
         Returns:
@@ -137,7 +137,7 @@ class BatchProcessor:
         logger.info(f"Starting batch processing of {self.total_files} files")
         
         # Process files sequentially with progress bar
-        for file_path in tqdm(file_list, desc="Processing videos", unit="file"):
+        for file_path in tqdm(file_list, desc="Processing media", unit="file"):
             self.current_file += 1
             
             try:

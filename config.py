@@ -1,5 +1,5 @@
 """
-Configuration management for MP4 Transcriber.
+Configuration management for Media Transcriber.
 Loads settings from environment variables and provides defaults.
 """
 
@@ -16,8 +16,10 @@ load_dotenv()
 # Available Whisper models
 WHISPER_MODELS = ["tiny", "base", "small", "medium", "large"]
 
-# Supported video formats
+# Supported media formats
 VIDEO_FORMATS = [".mp4", ".mov", ".avi", ".mkv", ".webm"]
+AUDIO_FORMATS = [".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus"]
+MEDIA_FORMATS = VIDEO_FORMATS + AUDIO_FORMATS
 
 # Supported output formats
 OUTPUT_FORMATS = ["txt", "srt", "vtt", "json"]

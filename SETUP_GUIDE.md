@@ -1,8 +1,8 @@
-# MP4 Transcriber - Setup Guide
+# Media Transcriber - Setup Guide
 
 ## Quick Start Installation
 
-Follow these steps to get your MP4 Transcriber up and running:
+Follow these steps to get your Media Transcriber up and running:
 
 ### Step 1: Install FFmpeg
 
@@ -93,8 +93,8 @@ python main.py diarization-smoke --backend noop
 ### Step 5: Test Transcription
 
 ```bash
-# Test with a sample video file
-python main.py transcribe --input ./videos/sample.mp4 --model base --lang ru
+# Test with a sample media file
+python main.py transcribe --input ./media/sample.m4a --model base --lang ru
 ```
 
 ---
@@ -134,27 +134,27 @@ Models are cached after first download.
 
 **Solution:** Use a smaller model:
 ```bash
-python main.py transcribe --input video.mp4 --model tiny
+python main.py transcribe --input recording.m4a --model tiny
 ```
 
-Or reduce video quality before processing.
+Or use a smaller model for long recordings.
 
 ---
 
 ## First Transcription Workflow
 
-1. **Prepare your video file**
-   - Place it in the `./videos` folder (or any location)
-   - Supported formats: MP4, MOV, AVI, MKV, WebM
+1. **Prepare your media file**
+   - Place it in the `./media` folder (or any location)
+   - Supported formats: MP4, MOV, AVI, MKV, WebM, MP3, WAV, M4A, AAC, OGG, OPUS
 
 2. **Run transcription**
    ```bash
-   python main.py transcribe --input ./videos/my_video.mp4
+   python main.py transcribe --input ./media/my_recording.m4a
    ```
 
 3. **Find your transcripts**
    - Check the `./transcripts` folder
-   - Files will be named after your video: `my_video.txt`, `my_video.srt`, etc.
+   - Files will be named after your source file: `my_recording.txt`, `my_recording.srt`, etc.
 
 4. **Review results**
    - Open TXT file for plain text
@@ -165,14 +165,14 @@ Or reduce video quality before processing.
 
 ## Batch Processing Example
 
-To transcribe all videos in a folder:
+To transcribe all supported media files in a folder:
 
 ```bash
-python main.py batch --input ./videos --output ./transcripts --model base
+python main.py batch --input ./media --output ./transcripts --model base
 ```
 
 The processor will:
-1. Find all video files in the folder
+1. Find all supported media files in the folder
 2. Process them one by one with progress bar
 3. Skip any that fail (continuing with the rest)
 4. Provide a summary at the end
@@ -192,7 +192,7 @@ The processor will:
    - Consider processing shorter segments
 
 3. **File organization:**
-   - Keep videos in dedicated folder
+   - Keep source media in a dedicated folder
    - Use descriptive filenames
    - Clean up old transcripts regularly
 

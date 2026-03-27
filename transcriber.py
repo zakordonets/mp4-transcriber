@@ -4,6 +4,7 @@ Core transcription module using Whisper ASR.
 
 import os
 import json
+import hashlib
 import re
 import tempfile
 import shutil
@@ -25,7 +26,7 @@ logger = setup_logger("VideoTranscriber")
 
 class VideoTranscriber:
     """
-    Class for transcribing video files using OpenAI Whisper.
+    Class for transcribing media files using OpenAI Whisper.
     
     Attributes:
         model_name: Name of the Whisper model to use
@@ -85,10 +86,10 @@ class VideoTranscriber:
         diarization_permissive: bool = True,
     ) -> Dict:
         """
-        Transcribe a video file.
+        Transcribe a media file.
         
         Args:
-            video_path: Path to the video file
+            video_path: Path to the input media file
             output_formats: List of formats to export (txt, srt, vtt, json)
             save_outputs: Whether to save output files automatically
             
@@ -119,13 +120,13 @@ class VideoTranscriber:
         output_basename: Optional[str] = None,
     ) -> Dict:
         """
-        Transcribe one or more video files as a single continuous transcript.
+        Transcribe one or more media files as a single continuous transcript.
 
-        The videos are converted to mono 16 kHz WAV files, concatenated in the
+        The inputs are converted to mono 16 kHz WAV files, concatenated in the
         provided order, and sent to Whisper once so timestamps remain continuous.
 
         Args:
-            video_paths: List of video file paths in the order they should be read
+            video_paths: List of media file paths in the order they should be read
             output_formats: List of formats to export (txt, srt, vtt, json)
             save_outputs: Whether to save output files automatically
             diarize: Whether to run speaker diarization on the combined audio
@@ -137,12 +138,12 @@ class VideoTranscriber:
             Dictionary with Whisper output plus source metadata.
         """
         if not video_paths:
-            raise ValueError("At least one video file must be provided")
+            raise ValueError("At least one media file must be provided")
 
         for video_path in video_paths:
             if not validate_file(video_path):
                 raise FileNotFoundError(
-                    f"Video file not found or not accessible: {video_path}"
+                    f"Media file not found or not accessible: {video_path}"
                 )
 
         if len(video_paths) == 1:
@@ -246,9 +247,20 @@ class VideoTranscriber:
                     logger.warning(f"Failed to clean up temporary files: {e}")
 
     def _build_output_basename(self, video_paths: List[str]) -> str:
+        max_length = 120
         stems = [sanitize_filename(Path(path).stem) for path in video_paths]
         joined = "__".join(filter(None, stems))
-        return joined or "transcript"
+        if not joined:
+            return "transcript"
+        if len(joined) <= max_length:
+            return joined
+
+        digest = hashlib.sha1("||".join(video_paths).encode("utf-8")).hexdigest()[:10]
+        prefix_budget = max_length - len("combined_") - len(digest) - 1
+        prefix = joined[:prefix_budget].rstrip("._-")
+        if not prefix:
+            prefix = "transcript"
+        return f"{prefix}_{digest}"
 
     def _normalize_output_basename(
         self,
@@ -266,6 +278,7 @@ class VideoTranscriber:
             raise ValueError("No audio files provided for concatenation")
 
         ensure_dir(os.path.dirname(output_path))
+        chunk_frames = 16_000 * 30
 
         with wave.open(audio_paths[0], "rb") as first_wav:
             params = (
@@ -280,7 +293,7 @@ class VideoTranscriber:
                 out_wav.setsampwidth(params[1])
                 out_wav.setframerate(params[2])
                 out_wav.setcomptype(params[3], params[4])
-                out_wav.writeframes(first_wav.readframes(first_wav.getnframes()))
+                self._copy_wav_frames(first_wav, out_wav, chunk_frames)
 
                 for audio_path in audio_paths[1:]:
                     with wave.open(audio_path, "rb") as wav_file:
@@ -295,16 +308,28 @@ class VideoTranscriber:
                             raise RuntimeError(
                                 "Audio files must share the same format before concatenation"
                             )
-                        out_wav.writeframes(wav_file.readframes(wav_file.getnframes()))
+                        self._copy_wav_frames(wav_file, out_wav, chunk_frames)
 
         logger.debug(f"Audio concatenated successfully: {Path(output_path).name}")
+
+    @staticmethod
+    def _copy_wav_frames(
+        src_wav: wave.Wave_read,
+        dst_wav: wave.Wave_write,
+        chunk_frames: int,
+    ) -> None:
+        while True:
+            chunk = src_wav.readframes(chunk_frames)
+            if not chunk:
+                break
+            dst_wav.writeframes(chunk)
     
     def extract_audio(self, video_path: str, audio_path: str) -> None:
         """
-        Extract audio stream from video file using ffmpeg.
+        Extract and normalize audio from a media file using ffmpeg.
         
         Args:
-            video_path: Path to input video file
+            video_path: Path to input media file
             audio_path: Path to save extracted audio (WAV format)
         """
         logger.debug(f"Extracting audio from {Path(video_path).name}")
@@ -333,7 +358,6 @@ class VideoTranscriber:
         except Exception as e:
             logger.error(f"Audio extraction failed: {e}")
             raise
-
     @staticmethod
     def _join_segment_texts(segments: List[Dict]) -> str:
         parts: List[str] = []
@@ -637,3 +661,6 @@ class VideoTranscriber:
             self.export_json(result, output_path)
         else:
             raise ValueError(f"Unsupported export format: {fmt}")
+
+
+MediaTranscriber = VideoTranscriber

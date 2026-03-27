@@ -1,15 +1,16 @@
-# MP4 Transcriber
+# Media Transcriber
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Automated video transcription tool using OpenAI Whisper and ffmpeg.** Convert your MP4, MOV, AVI, and other video files to text with support for multiple languages (optimized for Russian), batch processing, and export to various formats (TXT, SRT, VTT, JSON).
+**Automated media transcription tool using OpenAI Whisper and ffmpeg.** Convert common video and speech-audio files to text with support for multiple languages (optimized for Russian), batch processing, and export to TXT, SRT, VTT, and JSON.
 
 ---
 
 ## 📋 Table of Contents
 
 - [Features](#-features)
+- [System Requirements](#system-requirements)
 - [Installation](#-installation)
 - [Quick Start](#-quick-start)
 - [Usage](#-usage)
@@ -27,9 +28,9 @@
 
 ## ✨ Features
 
-- **Multi-format Support**: Process MP4, MOV, AVI, MKV, WebM video files
+- **Multi-format Support**: Process MP4, MOV, AVI, MKV, WebM, MP3, WAV, M4A, AAC, OGG, and OPUS files
 - **Multiple Export Formats**: TXT, SRT (subtitles), VTT (web subtitles), JSON (full metadata)
-- **Batch Processing**: Transcribe entire folders of videos automatically
+- **Batch Processing**: Transcribe entire folders of supported media files automatically
 - **Language Support**: Optimized for Russian, supports 90+ languages via Whisper
 - **Optional Speaker Diarization**: Label speakers with the `pyannote` backend when needed
 - **Progress Tracking**: Real-time progress bars during batch processing
@@ -41,6 +42,51 @@
 ---
 
 ## 📦 Installation
+
+### System Requirements
+
+### Minimum
+
+- **OS**: Windows, macOS, or Linux
+- **Python**: 3.9 or higher
+- **CPU**: 2-core CPU
+- **RAM**: 8 GB
+- **Disk space**: 5-10 GB free
+- **System dependency**: FFmpeg available in `PATH`
+
+### Recommended
+
+- **CPU**: 4 or more cores
+- **RAM**: 16 GB
+- **Storage**: SSD with 10-20 GB free
+- **Use case**: recommended for batch processing, longer recordings, and `small`/`medium` Whisper models
+
+### For Larger Models
+
+- **`tiny` / `base`**: suitable for most CPU-only setups
+- **`small`**: more comfortable with 16 GB RAM
+- **`medium` / `large`**: best with 16-32 GB RAM and extra disk space for model cache and temporary WAV files
+
+### Optional Speaker Diarization
+
+If you use `--diarize` with the `pyannote` backend, you also need:
+
+- `torchaudio >=2.2.0,<2.9`
+- `pyannote.audio >=3.1.0,<4.0.0`
+- A Hugging Face token in `HF_TOKEN` or `HUGGING_FACE_HUB_TOKEN` when the selected pyannote model requires it
+
+### Notes
+
+- This project currently runs in **CPU-only** mode; a GPU is not required.
+- Whisper models are downloaded on first use and cached locally.
+- Model cache sizes are approximately:
+  - `tiny`: ~140 MB
+  - `base`: ~150 MB
+  - `small`: ~480 MB
+  - `medium`: ~1.5 GB
+  - `large`: ~3 GB
+- Output files and temporary extracted audio require additional free disk space beyond the model cache.
+- Run `python main.py check` after installation to verify the environment.
 
 ### Prerequisites
 
@@ -104,16 +150,16 @@ python main.py check
 
 This verifies that FFmpeg and all Python packages are installed correctly.
 
-### 2. Transcribe a Single Video
+### 2. Transcribe a Single File
 
 ```bash
-python main.py transcribe --input ./videos/interview.mp4 --model medium --lang ru
+python main.py transcribe --input ./media/interview.mp4 --model medium --lang ru
 ```
 
 ### 3. Batch Process a Folder
 
 ```bash
-python main.py batch --input ./videos --output ./transcripts --model base
+python main.py batch --input ./media --output ./transcripts --model base
 ```
 
 That's it! Your transcripts will be saved in the `./transcripts` folder.
@@ -127,11 +173,11 @@ That's it! Your transcripts will be saved in the `./transcripts` folder.
 #### Transcribe Single File
 
 ```bash
-python main.py transcribe --input <video_file> [OPTIONS]
+python main.py transcribe --input <media_file> [OPTIONS]
 ```
 
 **Options:**
-- `--input, -i`: Path to input video file; repeat the option to merge multiple files into one transcript
+- `--input, -i`: Path to input media file; repeat the option to merge multiple files into one transcript
 - `--model, -m`: Whisper model (tiny|base|small|medium|large)
 - `--lang, -l`: Language code (default: ru)
 - `--output-dir, -o`: Output directory (default: ./transcripts)
@@ -144,10 +190,10 @@ python main.py transcribe --input <video_file> [OPTIONS]
 **Examples:**
 ```bash
 # Basic transcription with default settings
-python main.py transcribe --input video.mp4
+python main.py transcribe --input interview.mp4
 
 # Specify model and language
-python main.py transcribe --input lecture.mp4 --model small --lang en
+python main.py transcribe --input meeting.m4a --model small --lang en
 
 # Export only to SRT format
 python main.py transcribe --input interview.mov --formats srt
@@ -155,11 +201,11 @@ python main.py transcribe --input interview.mov --formats srt
 # Transcribe with speaker diarization
 python main.py transcribe --input interview.mov --diarize --diarization-backend pyannote
 
-# Merge two videos into one continuous transcript
-python main.py transcribe --input part1.mp4 --input part2.mp4 --output-name lecture_day1
+# Merge two media files into one continuous transcript
+python main.py transcribe --input part1.mp4 --input part2.m4a --output-name lecture_day1
 
 # Same scenario via the dedicated combine command
-python main.py combine-transcribe --input part1.mp4 --input part2.mp4 --output-name lecture_day1
+python main.py combine-transcribe --input part1.mp4 --input part2.m4a --output-name lecture_day1
 ```
 
 #### Batch Processing
@@ -169,7 +215,7 @@ python main.py batch --input <folder_path> [OPTIONS]
 ```
 
 **Options:**
-- `--input, -i`: Path to folder with videos (required)
+- `--input, -i`: Path to folder with supported media files (required)
 - `--output, -o`: Output directory (default: ./transcripts)
 - `--model, -m`: Whisper model (default: from .env)
 - `--lang, -l`: Language code (default: from .env)
@@ -181,8 +227,8 @@ python main.py batch --input <folder_path> [OPTIONS]
 
 **Examples:**
 ```bash
-# Process all videos in a folder
-python main.py batch --input ./videos
+# Process all supported media files in a folder
+python main.py batch --input ./media
 
 # Custom output and model
 python main.py batch --input ./lectures --output ./subs --model medium
@@ -191,7 +237,7 @@ python main.py batch --input ./lectures --output ./subs --model medium
 python main.py batch --input ./interviews --lang en --formats txt,json
 
 # Batch process with no-op diarization backend
-python main.py batch --input ./videos --diarize --diarization-backend noop
+python main.py batch --input ./media --diarize --diarization-backend noop
 ```
 
 #### System Check
@@ -234,14 +280,14 @@ transcriber = VideoTranscriber(
 
 # Transcribe single file
 result = transcriber.transcribe(
-    "./videos/interview.mp4",
+    "./media/interview.mp4",
     output_formats=["txt", "srt"],
     save_outputs=True
 )
 
 # Transcribe with optional diarization
 diarized_result = transcriber.transcribe(
-    "./videos/interview.mp4",
+    "./media/interview.mp4",
     output_formats=["json"],
     save_outputs=True,
     diarize=True,
@@ -255,9 +301,9 @@ print(f"Text: {result['text']}")
 print(f"Segments: {len(result['segments'])}")
 print(f"Language: {result['language']}")
 
-# Transcribe multiple videos as one continuous transcript
+# Transcribe multiple media files as one continuous transcript
 combined_result = transcriber.transcribe_many(
-    ["./videos/part1.mp4", "./videos/part2.mp4"],
+    ["./media/part1.mp4", "./media/part2.m4a"],
     output_formats=["txt", "json"],
     save_outputs=True,
     output_basename="lecture_day1",
@@ -266,7 +312,7 @@ print(combined_result["source_files"])
 
 # Batch processing
 batch = BatchProcessor(transcriber, max_workers=2)
-results = batch.process_folder("./videos")
+results = batch.process_folder("./media")
 
 print(f"Successful: {results['successful']}")
 print(f"Failed: {results['failed']}")
@@ -288,7 +334,7 @@ Speaker diarization is optional and does not affect the default transcription pa
 ```bash
 python main.py transcribe --input interview.mp4 --diarize
 python main.py transcribe --input interview.mp4 --diarize --diarization-backend pyannote
-python main.py batch --input ./videos --diarize
+python main.py batch --input ./media --diarize
 python main.py diarization-smoke --backend noop
 ```
 
@@ -410,8 +456,8 @@ WEBVTT
     }
   ],
   "language": "ru",
-  "source_file": "./videos/interview.mp4",
-  "source_files": ["./videos/interview.mp4"]
+  "source_file": "./media/interview.mp4",
+  "source_files": ["./media/interview.mp4"]
 }
 ```
 
@@ -430,7 +476,7 @@ Accuracy depends on:
 
 For Russian, `medium` model provides excellent results.
 
-### Can I transcribe videos with multiple speakers?
+### Can I transcribe files with multiple speakers?
 
 Yes. Speaker diarization is available via the optional `pyannote` backend. Use `python main.py check` to see whether it is installed, or `python main.py diarization-smoke --backend noop` for a dependency-free smoke test.
 
@@ -447,7 +493,7 @@ python main.py diarization-smoke --backend noop
 ### How long does transcription take?
 
 Processing time depends on:
-- Video length
+- Recording length
 - Model size
 - Hardware (CPU speed)
 
@@ -460,17 +506,23 @@ Processing time depends on:
 
 Example: 10-minute video with `base` model ≈ 40 seconds.
 
-### What video formats are supported?
+### What input formats are supported?
 
 - MP4 (.mp4)
 - MOV (.mov)
 - AVI (.avi)
 - MKV (.mkv)
 - WebM (.webm)
+- MP3 (.mp3)
+- WAV (.wav)
+- M4A (.m4a)
+- AAC (.aac)
+- OGG (.ogg)
+- OPUS (.opus)
 
 ### Can I use this without installing FFmpeg?
 
-No, FFmpeg is required for audio extraction from video files. It's a free, open-source tool that must be installed separately.
+No, FFmpeg is required for audio extraction and normalization from supported media files. It's a free, open-source tool that must be installed separately.
 
 ### Does this work offline?
 
@@ -505,7 +557,7 @@ This version is CPU-only. If you're trying to use GPU, modify the code to add CU
 
 **Solutions:**
 1. Use a smaller model (`tiny` or `base`)
-2. Reduce video quality before processing
+2. Use shorter files when possible
 3. Close other applications
 4. Consider adding GPU support (requires code changes)
 
@@ -539,7 +591,7 @@ This project is licensed under the MIT License - see below for details:
 ```
 MIT License
 
-Copyright (c) 2026 MP4 Transcriber
+Copyright (c) 2026 Media Transcriber
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

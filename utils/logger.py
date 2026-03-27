@@ -1,5 +1,5 @@
 """
-Logging configuration for MP4 Transcriber.
+Logging configuration for Media Transcriber.
 """
 
 import logging

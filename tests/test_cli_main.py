@@ -19,6 +19,7 @@ def test_transcribe_help_includes_diarize():
     assert result.exit_code == 0
     assert "--diarize" in result.output
     assert "--diarization-backend" in result.output
+    assert "input media" in result.output.lower()
 
 
 def test_combine_transcribe_help_includes_required_inputs():
@@ -34,6 +35,7 @@ def test_batch_help_includes_diarize():
     result = runner.invoke(cli, ["batch", "--help"])
     assert result.exit_code == 0
     assert "--diarize" in result.output
+    assert "media files" in result.output.lower()
 
 
 def test_check_runs_and_lists_diarization():
