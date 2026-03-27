@@ -37,7 +37,7 @@ _tmp_pkg/
 .pytest_cache/
 .tmp_test_workspace/
 .deepeval/
-!docs/archive/
+docs/archive/
 
 # IDE
 .vscode/
